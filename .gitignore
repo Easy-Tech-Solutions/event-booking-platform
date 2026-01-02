@@ -1,2 +1,15 @@
 frontend/node_modules
 backend/node_modules
+.env
+.DS_Store   
+frontend/build
+backend/build
+/logs
+/tests/__pycache__/*.pyc
+/tests/__pycache__/
+*.log
+.vscode/
+.idea/
+frontend/.env
+backend/.env
+
