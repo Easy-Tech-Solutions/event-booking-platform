@@ -9,10 +9,18 @@ const createEvent = async (req, res, next) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
+    let imagePath = null;
+
+if (req.file) {
+  imagePath = `/uploads/events/${req.file.filename}`;
+}
+
     const eventData = {
       ...req.body,
-      organizer: req.user._id
+      organizer: req.user._id,
+       images: imagePath ? [imagePath] : [] 
     };
+    
 
     const event = new Event(eventData);
     await event.save();
@@ -39,7 +47,7 @@ const getEvents = async (req, res, next) => {
       status = 'published'
     } = req.query;
 
-    const query = { status };
+    const query = { };
 
     if (category) query.category = category;
     if (search) {

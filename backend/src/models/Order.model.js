@@ -1,10 +1,14 @@
+
 import mongoose from 'mongoose';
 
 const orderSchema = new mongoose.Schema({
   orderNumber: {
     type: String,
     unique: true,
-    required: true
+    required: true,
+    default: function () {
+    return 'ORD-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+  }
   },
   user: {
     type: mongoose.Schema.Types.ObjectId,
@@ -63,11 +67,11 @@ const orderSchema = new mongoose.Schema({
   timestamps: true
 });
 
-orderSchema.pre('save', function(next) {
-  if (!this.orderNumber) {
-    this.orderNumber = 'ORD-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
-  }
-  next();
-});
+// orderSchema.pre('save', async function(next) {
+//   if (!this.orderNumber) {
+//     this.orderNumber = 'ORD-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+//   }
+//   next();
+// });
 
 export default mongoose.model('Order', orderSchema);

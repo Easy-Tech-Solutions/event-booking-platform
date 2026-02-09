@@ -5,7 +5,7 @@ const authenticate = async (req, res, next) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     
-    if (!token) {
+    if (!token) {so 
       return res.status(401).json({ message: 'Access token required' });
     }
 

@@ -13,13 +13,14 @@ import {
   paginationValidation,
   mongoIdValidation
 } from '../validators/index.js';
+import upload from '../middlewares/upload.js';
 
 const router = express.Router();
 
 router.get('/', paginationValidation, getEvents);
 router.get('/my-events', authenticate, authorize('organizer', 'admin'), paginationValidation, getMyEvents);
 router.get('/:id', mongoIdValidation, getEventById);
-router.post('/', authenticate, authorize('organizer', 'admin'), eventValidation, createEvent);
+router.post('/', upload.single("image"), authenticate, authorize('organizer', 'admin'), eventValidation, createEvent);
 router.put('/:id', authenticate, authorize('organizer', 'admin'), mongoIdValidation, eventValidation, updateEvent);
 router.delete('/:id', authenticate, authorize('organizer', 'admin'), mongoIdValidation, deleteEvent);
 

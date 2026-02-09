@@ -1,3 +1,4 @@
+// order controller
 import Order from '../models/Order.model.js';
 import TicketType from '../models/TicketType.model.js';
 import Ticket from '../models/Ticket.model.js';
@@ -25,6 +26,7 @@ const createOrder = async (req, res, next) => {
           message: `Ticket type ${ticketType?.name || 'unknown'} is not available` 
         });
       }
+      console.log(ticketType)
 
       if (ticketType.available < item.quantity) {
         return res.status(400).json({ 
@@ -62,15 +64,17 @@ const createOrder = async (req, res, next) => {
 
     await order.save();
 
+    const finalAmountCents = Math.round(finalAmount * 100);
     // Create Stripe payment intent
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: finalAmount,
+      amount: finalAmountCents,
       currency: 'usd',
       metadata: {
         orderId: order._id.toString(),
         userId: req.user._id.toString(),
         eventId: eventId
       }
+      
     });
 
     order.paymentIntentId = paymentIntent.id;

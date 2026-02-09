@@ -5,7 +5,7 @@ import {
   getTicketTypes,
   updateTicketType,
   deleteTicketType
-} from '../controllers/ticket.controller.js';
+} from '../controllers/ticketType.controller.js';
 import {
   ticketTypeValidation,
   mongoIdValidation

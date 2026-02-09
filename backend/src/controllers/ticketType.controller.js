@@ -2,6 +2,7 @@ import TicketType from '../models/TicketType.model.js';
 import Event from '../models/Event.model.js';
 import { validationResult } from 'express-validator';
 
+/* ================= CREATE ================= */
 const createTicketType = async (req, res, next) => {
   try {
     const errors = validationResult(req);
@@ -14,7 +15,11 @@ const createTicketType = async (req, res, next) => {
       return res.status(404).json({ message: 'Event not found' });
     }
 
-    if (event.organizer.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+    // Only organizer or admin can add tickets
+    if (
+      event.organizer.toString() !== req.user._id.toString() &&
+      req.user.role !== 'admin'
+    ) {
       return res.status(403).json({ message: 'Not authorized to create tickets for this event' });
     }
 
@@ -30,13 +35,14 @@ const createTicketType = async (req, res, next) => {
   }
 };
 
+/* ================= GET ALL FOR EVENT ================= */
 const getTicketTypes = async (req, res, next) => {
   try {
     const { eventId } = req.params;
 
-    const ticketTypes = await TicketType.find({ 
-      event: eventId, 
-      isActive: true 
+    const ticketTypes = await TicketType.find({
+      event: eventId,
+      isActive: true
     }).populate('event', 'title startDate endDate');
 
     res.json({ ticketTypes });
@@ -45,6 +51,23 @@ const getTicketTypes = async (req, res, next) => {
   }
 };
 
+/* ================= GET SINGLE ================= */
+const getTicketTypeById = async (req, res, next) => {
+  try {
+    const ticketType = await TicketType.findById(req.params.id)
+      .populate('event', 'title startDate');
+
+    if (!ticketType) {
+      return res.status(404).json({ message: 'Ticket type not found' });
+    }
+
+    res.json({ ticketType });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* ================= UPDATE ================= */
 const updateTicketType = async (req, res, next) => {
   try {
     const ticketType = await TicketType.findById(req.params.id).populate('event');
@@ -53,9 +76,17 @@ const updateTicketType = async (req, res, next) => {
       return res.status(404).json({ message: 'Ticket type not found' });
     }
 
-    if (ticketType.event.organizer.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+    // Authorization check
+    if (
+      ticketType.event.organizer.toString() !== req.user._id.toString() &&
+      req.user.role !== 'admin'
+    ) {
       return res.status(403).json({ message: 'Not authorized to update this ticket type' });
     }
+
+    // 🚫 Prevent changing sensitive fields
+    delete req.body.sold;   // sold should only change during booking
+    delete req.body.event;  // ticket should not be moved to another event
 
     const updatedTicketType = await TicketType.findByIdAndUpdate(
       req.params.id,
@@ -72,6 +103,7 @@ const updateTicketType = async (req, res, next) => {
   }
 };
 
+/* ================= DELETE (SOFT DELETE) ================= */
 const deleteTicketType = async (req, res, next) => {
   try {
     const ticketType = await TicketType.findById(req.params.id).populate('event');
@@ -80,17 +112,23 @@ const deleteTicketType = async (req, res, next) => {
       return res.status(404).json({ message: 'Ticket type not found' });
     }
 
-    if (ticketType.event.organizer.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+    if (
+      ticketType.event.organizer.toString() !== req.user._id.toString() &&
+      req.user.role !== 'admin'
+    ) {
       return res.status(403).json({ message: 'Not authorized to delete this ticket type' });
     }
 
+    // Don't allow deleting if tickets already sold
     if (ticketType.sold > 0) {
       return res.status(400).json({ message: 'Cannot delete ticket type with sold tickets' });
     }
 
-    await TicketType.findByIdAndDelete(req.params.id);
+    // Soft delete instead of removing from DB
+    ticketType.isActive = false;
+    await ticketType.save();
 
-    res.json({ message: 'Ticket type deleted successfully' });
+    res.json({ message: 'Ticket type deactivated successfully' });
   } catch (error) {
     next(error);
   }
@@ -99,6 +137,7 @@ const deleteTicketType = async (req, res, next) => {
 export {
   createTicketType,
   getTicketTypes,
+  getTicketTypeById,
   updateTicketType,
   deleteTicketType
 };
