@@ -1,0 +1,157 @@
+import { useState } from "react";
+import { Link, useNavigate } from "react-router";
+import { Button } from "./ui/button";
+import { Search, Menu, MapPin, Ticket, LogIn } from "lucide-react";
+import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
+
+export function Navbar() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [location, setLocation] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const navigate = useNavigate();
+
+  const handleSearch = () => {
+    const params = new URLSearchParams();
+    if (searchQuery.trim()) params.set("q", searchQuery);
+    if (location.trim()) params.set("location", location);
+    navigate(`/discover?${params.toString()}`);
+  };
+
+  return (
+    <nav className="border-b bg-white sticky top-0 z-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center gap-4 h-16">
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-2 shrink-0">
+            <div className="bg-[#004406] p-2 rounded-lg">
+              <Ticket className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-bold text-xl text-[#004406]">EventHub</span>
+          </Link>
+
+          {/* Location + Search bar */}
+          <div className="hidden md:flex flex-1 items-center border rounded-lg overflow-hidden shadow-sm">
+            <div className="flex items-center gap-2 px-3 border-r shrink-0">
+              <MapPin className="w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Your location"
+                className="text-sm outline-none w-28 bg-transparent"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+              />
+            </div>
+            <input
+              type="text"
+              placeholder="Search events..."
+              className="flex-1 px-3 text-sm outline-none bg-transparent py-2"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+            />
+            <button
+              onClick={handleSearch}
+              className="bg-[#004406] px-4 py-2 text-white hover:bg-[#003305] transition-colors"
+            >
+              <Search className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Desktop nav links */}
+          <div className="hidden md:flex items-center gap-1 shrink-0">
+            <Link to="/discover" className="text-sm px-3 py-2 rounded-lg hover:bg-[#004406]/10 hover:text-[#004406] transition-colors">
+              Find Events
+            </Link>
+            <Link to="/organizer/create" className="text-sm px-3 py-2 rounded-lg hover:bg-[#004406]/10 hover:text-[#004406] transition-colors">
+              Create Events
+            </Link>
+            <Link to="/organizer/dashboard" className="text-sm px-3 py-2 rounded-lg hover:bg-[#004406]/10 hover:text-[#004406] transition-colors">
+              Organizer
+            </Link>
+            <Link to="/help" className="text-sm px-3 py-2 rounded-lg hover:bg-[#004406]/10 hover:text-[#004406] transition-colors">
+              Help Center
+            </Link>
+            <Link to="/user/tickets" className="text-sm px-3 py-2 rounded-lg hover:bg-[#004406]/10 hover:text-[#004406] transition-colors">
+              Find My Tickets
+            </Link>
+            <Link to="/user/profile" className="text-sm px-3 py-2 rounded-lg hover:bg-[#004406]/10 hover:text-[#004406] transition-colors">
+              My Account
+            </Link>
+            <Link to="/admin/dashboard" className="text-sm px-3 py-2 rounded-lg hover:bg-[#004406]/10 hover:text-[#004406] transition-colors">
+              Admin
+            </Link>
+            <Link to="/signin">
+              <Button size="sm" className="ml-1 bg-[#004406] hover:bg-[#003305] text-white">
+                <LogIn className="w-4 h-4 mr-2" />
+                Sign In
+              </Button>
+            </Link>
+          </div>
+
+          {/* Mobile menu trigger */}
+          <div className="md:hidden ml-auto">
+            <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  <Menu className="w-5 h-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-[300px]">
+                <div className="flex flex-col gap-2 mt-8">
+                  <div className="flex items-center border rounded-lg overflow-hidden mb-2">
+                    <div className="flex items-center gap-1 px-2 border-r">
+                      <MapPin className="w-4 h-4 text-muted-foreground" />
+                      <input
+                        type="text"
+                        placeholder="Location"
+                        className="text-sm outline-none w-20 py-2 bg-transparent"
+                        value={location}
+                        onChange={(e) => setLocation(e.target.value)}
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Search events"
+                      className="flex-1 px-2 text-sm outline-none py-2 bg-transparent"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                    />
+                  </div>
+                  <Link to="/discover" className="px-4 py-2 hover:bg-[#004406]/10 hover:text-[#004406] rounded-lg transition-colors" onClick={() => setMobileMenuOpen(false)}>
+                    Find Events
+                  </Link>
+                  <Link to="/organizer/create" className="px-4 py-2 hover:bg-[#004406]/10 hover:text-[#004406] rounded-lg transition-colors" onClick={() => setMobileMenuOpen(false)}>
+                    Create Events
+                  </Link>
+                  <Link to="/organizer/dashboard" className="px-4 py-2 hover:bg-[#004406]/10 hover:text-[#004406] rounded-lg transition-colors" onClick={() => setMobileMenuOpen(false)}>
+                    Organizer
+                  </Link>
+                  <Link to="/help" className="px-4 py-2 hover:bg-[#004406]/10 hover:text-[#004406] rounded-lg transition-colors" onClick={() => setMobileMenuOpen(false)}>
+                    Help Center
+                  </Link>
+                  <Link to="/user/tickets" className="px-4 py-2 hover:bg-[#004406]/10 hover:text-[#004406] rounded-lg transition-colors" onClick={() => setMobileMenuOpen(false)}>
+                    Find My Tickets
+                  </Link>
+                  <Link to="/user/profile" className="px-4 py-2 hover:bg-[#004406]/10 hover:text-[#004406] rounded-lg transition-colors" onClick={() => setMobileMenuOpen(false)}>
+                    My Account
+                  </Link>
+                  <Link to="/admin/dashboard" className="px-4 py-2 hover:bg-[#004406]/10 hover:text-[#004406] rounded-lg transition-colors" onClick={() => setMobileMenuOpen(false)}>
+                    Admin
+                  </Link>
+                  <div className="border-t my-2" />
+                  <Link to="/signin" onClick={() => setMobileMenuOpen(false)}>
+                    <Button className="w-full bg-[#004406] hover:bg-[#003305] text-white">
+                      <LogIn className="w-4 h-4 mr-2" />
+                      Sign In
+                    </Button>
+                  </Link>
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+        </div>
+      </div>
+    </nav>
+  );
+}
