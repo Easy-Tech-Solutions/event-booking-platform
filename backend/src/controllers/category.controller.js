@@ -1,7 +1,7 @@
 import Category from '../models/Category.model.js';
 import { validationResult } from 'express-validator';
 
-// Create a new category
+
 export const createCategory = async (req, res, next) => {
   try {
     const errors = validationResult(req);
@@ -25,7 +25,7 @@ export const createCategory = async (req, res, next) => {
   }
 };
 
-// Get all categories
+
 export const getCategories = async (req, res, next) => {
   try {
     const categories = await Category.find({ isActive: true }).sort({ createdAt: -1 });

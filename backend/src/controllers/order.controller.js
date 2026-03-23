@@ -1,11 +1,10 @@
-// order controller
-import Order from '../models/Order.model.js';
-import TicketType from '../models/TicketType.model.js';
-import Ticket from '../models/Ticket.model.js';
-import Payment from '../models/Payment.model.js';
-import stripe from '../config/stripe.js';
-import { generateQRCode, generateTicketQRData } from '../utils/qrcode.js';
-import { validationResult } from 'express-validator';
+import Order from "../models/Order.model.js";
+import TicketType from "../models/TicketType.model.js";
+import Ticket from "../models/Ticket.model.js";
+import Payment from "../models/Payment.model.js";
+import stripe from "../config/stripe.js";
+import { generateQRCode, generateTicketQRData } from "../utils/qrcode.js";
+import { validationResult } from "express-validator";
 
 const createOrder = async (req, res, next) => {
   try {
@@ -17,26 +16,25 @@ const createOrder = async (req, res, next) => {
     const { eventId, items, billingDetails } = req.body;
     let totalAmount = 0;
 
-    // Validate ticket availability and calculate total
     for (const item of items) {
       const ticketType = await TicketType.findById(item.ticketType);
-      
+
       if (!ticketType || !ticketType.isAvailable) {
-        return res.status(400).json({ 
-          message: `Ticket type ${ticketType?.name || 'unknown'} is not available` 
+        return res.status(400).json({
+          message: `Ticket type ${ticketType?.name || "unknown"} is not available`,
         });
       }
-      console.log(ticketType)
+      console.log(ticketType);
 
       if (ticketType.available < item.quantity) {
-        return res.status(400).json({ 
-          message: `Only ${ticketType.available} tickets available for ${ticketType.name}` 
+        return res.status(400).json({
+          message: `Only ${ticketType.available} tickets available for ${ticketType.name}`,
         });
       }
 
       if (item.quantity > ticketType.maxPerOrder) {
-        return res.status(400).json({ 
-          message: `Maximum ${ticketType.maxPerOrder} tickets allowed per order for ${ticketType.name}` 
+        return res.status(400).json({
+          message: `Maximum ${ticketType.maxPerOrder} tickets allowed per order for ${ticketType.name}`,
         });
       }
 
@@ -57,9 +55,9 @@ const createOrder = async (req, res, next) => {
       totalAmount: finalAmount,
       fees: {
         platform: platformFee,
-        payment: paymentFee
+        payment: paymentFee,
       },
-      billingDetails
+      billingDetails,
     });
 
     await order.save();
@@ -68,22 +66,21 @@ const createOrder = async (req, res, next) => {
     // Create Stripe payment intent
     const paymentIntent = await stripe.paymentIntents.create({
       amount: finalAmountCents,
-      currency: 'usd',
+      currency: "usd",
       metadata: {
         orderId: order._id.toString(),
         userId: req.user._id.toString(),
-        eventId: eventId
-      }
-      
+        eventId: eventId,
+      },
     });
 
     order.paymentIntentId = paymentIntent.id;
     await order.save();
 
     res.status(201).json({
-      message: 'Order created successfully',
+      message: "Order created successfully",
       order,
-      clientSecret: paymentIntent.client_secret
+      clientSecret: paymentIntent.client_secret,
     });
   } catch (error) {
     next(error);
@@ -92,55 +89,99 @@ const createOrder = async (req, res, next) => {
 
 const confirmOrder = async (req, res, next) => {
   try {
-    const { orderId, paymentIntentId } = req.body;
+    const { orderId, paymentMethodId } = req.body;
 
-    const order = await Order.findById(orderId).populate('items.ticketType');
+    // Validate inputs
+    if (!orderId) {
+      return res.status(400).json({ message: "orderId is required." });
+    }
+    if (!paymentMethodId) {
+      return res.status(400).json({
+        message: "paymentMethodId is required. (pm_card_visa)",
+      });
+    }
+    // find order
+    const order = await Order.findById(orderId).populate("items.ticketType");
     if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
+      return res.status(404).json({ message: "Order not found" });
     }
 
     if (order.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Not authorized' });
+      return res.status(403).json({ message: "Not authorized" });
     }
 
-    // Verify payment with Stripe
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (order.status === "completed") {
+      return res.status(400).json({ message: "Order is already completed." });
+    }
+    if (order.status === "cancelled" || order.status === "failed") {
+      return res
+        .status(400)
+        .json({ message: `Order is ${order.status} and cannot be confirmed.` });
+    }
+    if (!order.paymentIntentId) {
+      return res
+        .status(400)
+        .json({ message: "No PaymentIntent associated with this order." });
+    }
+
+    let paymentIntent;
+
+    try {
+      paymentIntent = await stripe.paymentIntents.confirm(
+        order.paymentIntentId,
+        {
+          payment_method: paymentMethodId,
+          return_url: "https://example.com/order-complete",
+        },
+      );
+    } catch (stripeErr) {
+      
+      if (stripeErr.type === "StripeCardError") {
+        return res.status(402).json({
+          message: "Payment failed.",
+          declineCode: stripeErr.decline_code, 
+          stripeMessage: stripeErr.message,
+        });
+      }
+      if (stripeErr.type === "StripeInvalidRequestError") {
+        return res.status(400).json({ message: stripeErr.message });
+      }
+      throw stripeErr;
+    }
+    if (paymentIntent.status !== "succeeded") {
+      return res.status(400).json({ message: "Payment not completed" });
+    }
+
     
-    if (paymentIntent.status !== 'succeeded') {
-      return res.status(400).json({ message: 'Payment not completed' });
-    }
-
-    // Update order status
-    order.status = 'completed';
+    order.status = "completed";
     order.paymentMethod = paymentIntent.payment_method;
     await order.save();
 
-    // Create payment record
+    
     const payment = new Payment({
       order: order._id,
-      stripePaymentIntentId: paymentIntentId,
+      stripePaymentIntentId: paymentIntent.id,
       amount: order.totalAmount,
-      status: 'succeeded',
-      paymentMethod: paymentIntent.payment_method
+      status: "succeeded",
+      paymentMethod: paymentIntent.payment_method,
     });
     await payment.save();
 
-    // Generate tickets
+    
     const tickets = [];
     for (const item of order.items) {
-      // Update ticket type sold count
-      await TicketType.findByIdAndUpdate(
-        item.ticketType._id,
-        { $inc: { sold: item.quantity } }
-      );
+      
+      await TicketType.findByIdAndUpdate(item.ticketType._id, {
+        $inc: { sold: item.quantity },
+      });
 
-      // Create individual tickets
+      
       for (let i = 0; i < item.quantity; i++) {
         const ticket = new Ticket({
           order: order._id,
           event: order.event,
           ticketType: item.ticketType._id,
-          holder: order.user
+          holder: order.user,
         });
 
         await ticket.save();
@@ -156,9 +197,13 @@ const confirmOrder = async (req, res, next) => {
     }
 
     res.json({
-      message: 'Order confirmed successfully',
+      message: "Order confirmed successfully",
+      orderId: order._id,
+      paymentIntentId: paymentIntent.id,
+      paymentStatus: paymentIntent.status,
+      orderStatus: order.status,
       order,
-      tickets
+      tickets,
     });
   } catch (error) {
     next(error);
@@ -170,8 +215,8 @@ const getMyOrders = async (req, res, next) => {
     const { page = 1, limit = 10 } = req.query;
 
     const orders = await Order.find({ user: req.user._id })
-      .populate('event', 'title startDate location')
-      .populate('items.ticketType', 'name price')
+      .populate("event", "title startDate location")
+      .populate("items.ticketType", "name price")
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
@@ -182,7 +227,7 @@ const getMyOrders = async (req, res, next) => {
       orders,
       totalPages: Math.ceil(total / limit),
       currentPage: page,
-      total
+      total,
     });
   } catch (error) {
     next(error);
@@ -192,32 +237,30 @@ const getMyOrders = async (req, res, next) => {
 const getOrderById = async (req, res, next) => {
   try {
     const order = await Order.findById(req.params.id)
-      .populate('event', 'title startDate endDate location')
-      .populate('items.ticketType', 'name price benefits')
-      .populate('user', 'firstName lastName email');
+      .populate("event", "title startDate endDate location")
+      .populate("items.ticketType", "name price benefits")
+      .populate("user", "firstName lastName email");
 
     if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
+      return res.status(404).json({ message: "Order not found" });
     }
 
-    if (order.user._id.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Not authorized' });
+    if (
+      order.user._id.toString() !== req.user._id.toString() &&
+      req.user.role !== "admin"
+    ) {
+      return res.status(403).json({ message: "Not authorized" });
     }
 
     const tickets = await Ticket.find({ order: order._id });
 
     res.json({
       order,
-      tickets
+      tickets,
     });
   } catch (error) {
     next(error);
   }
 };
 
-export {
-  createOrder,
-  confirmOrder,
-  getMyOrders,
-  getOrderById
-};
+export { createOrder, confirmOrder, getMyOrders, getOrderById };
