@@ -43,6 +43,10 @@ const userSchema = new mongoose.Schema(
     avatar: String,
     phone: String,
     refreshToken: String,
+    verificationToken: String,
+    verificationExpires: {
+      type: Date,
+    },
   },
   {
     timestamps: true,

@@ -7,6 +7,8 @@ import rateLimit from "express-rate-limit";
 import { errorHandler, notFound } from "./middlewares/error.js";
 import env from "./config/env.js";
 
+import "./config/email.js";
+
 // Routes Importation
 import authRoutes from "./routes/auth.routes.js";
 import eventRoutes from "./routes/event.routes.js";

@@ -6,6 +6,7 @@ import {
   refreshToken,
   logout,
   getProfile,
+  verifyEmail,
 } from "../controllers/auth.controller.js";
 import { registerValidation, loginValidation } from "../validators/index.js";
 
@@ -16,5 +17,6 @@ router.post("/login", loginValidation, login);
 router.post("/refresh-token", refreshToken);
 router.post("/logout", authenticate, logout);
 router.get("/profile", authenticate, getProfile);
+router.get("/verify-email/:token", verifyEmail);
 
 export default router;
