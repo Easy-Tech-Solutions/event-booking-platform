@@ -3,7 +3,10 @@ import { generateTokens, verifyRefreshToken } from "../utils/jwt.js";
 import { validationResult } from "express-validator";
 import crypto from "crypto";
 import { sendEmail } from "../utils/sendEmail.js";
-import { verificationEmailTemplate } from "../utils/emailTemplates.js";
+import {
+  verificationEmailTemplate,
+  resetPasswordEmailTemplate,
+} from "../utils/emailTemplates.js";
 
 const register = async (req, res, next) => {
   try {
@@ -153,4 +156,74 @@ const verifyEmail = async (req, res, next) => {
   }
 };
 
-export { register, login, refreshToken, logout, getProfile, verifyEmail };
+const forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    const existingUser = await User.findOne({ email });
+
+    if (!existingUser) {
+      return res
+        .status(404)
+        .json({ message: "No account with that email exists." });
+    }
+    const resetToken = crypto.randomBytes(32).toString("hex");
+
+    existingUser.resetPasswordToken = resetToken;
+    existingUser.resetPasswordExpires = Date.now() + 24 * 60 * 60 * 1000;
+
+    await existingUser.save();
+
+    const resetPasswordLink = `http://localhost:5000/api/auth/reset-password/${resetToken}`;
+
+    const { subject, html } = resetPasswordEmailTemplate(
+      existingUser.firstName,
+      resetPasswordLink,
+    );
+    await sendEmail(existingUser.email, subject, html);
+
+    res.status(200).json({
+      message: "Password reset email sent",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const resetPassword = async (req, res, next) => {
+  try {
+    const token = req.params.token;
+    const { password } = req.body;
+
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired token." });
+    }
+
+    user.password = password;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    return res.json({
+      message: "Password reset successful. You can now login.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export {
+  register,
+  login,
+  refreshToken,
+  logout,
+  getProfile,
+  verifyEmail,
+  forgotPassword,
+  resetPassword,
+};
