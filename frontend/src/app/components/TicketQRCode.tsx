@@ -1,19 +1,11 @@
-import React from "react";
-import QRCode from "qrcode.react";
+import { QRCodeSVG } from 'qrcode.react';
 
-export function TicketQRCode({ ticketId }) {
-  const qrValue = `event-ticket:${ticketId}`;
+export function TicketQRCode({ ticketId }: { ticketId: string }) {
   return (
     <div className="flex flex-col items-center">
-      <QRCode value={qrValue} size={128} />
-      <div className="mt-2 text-xs text-muted-foreground">Scan at event check-in</div>
-      <a
-        href={`data:image/png;base64,${btoa(qrValue)}`}
-        download={`ticket-${ticketId}.png`}
-        className="mt-2 text-sm text-green-700 underline"
-      >
-        Download QR Code
-      </a>
+      <QRCodeSVG value={ticketId} size={160} level="M" />
+      <div className="mt-2 text-xs text-muted-foreground font-mono">{ticketId}</div>
+      <div className="mt-1 text-xs text-muted-foreground">Scan at event check-in</div>
     </div>
   );
 }
