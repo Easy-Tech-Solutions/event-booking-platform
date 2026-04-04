@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link } from 'react-router';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { Button } from '../components/ui/button';
@@ -11,12 +11,12 @@ import { useAppDispatch, useAppSelector } from '../store';
 import { registerUser, clearError } from '../store/slices/authSlice';
 
 export function SignUp() {
-  const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const { isLoading, error } = useAppSelector((state) => state.auth);
 
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '', confirmPassword: '', role: 'attendee' as 'attendee' | 'organizer' });
   const [localError, setLocalError] = useState('');
+  const [registered, setRegistered] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm((prev) => ({ ...prev, [e.target.id]: e.target.value }));
@@ -30,11 +30,42 @@ export function SignUp() {
       setLocalError('Passwords do not match.');
       return;
     }
-    const result = await dispatch(registerUser({ firstName: form.firstName, lastName: form.lastName, email: form.email, password: form.password, role: form.role }));
+    const result = await dispatch(registerUser({
+      firstName: form.firstName,
+      lastName: form.lastName,
+      email: form.email,
+      password: form.password,
+      role: form.role,
+    }));
     if (registerUser.fulfilled.match(result)) {
-      navigate('/user/tickets');
+      setRegistered(true);
     }
   };
+
+  if (registered) {
+    return (
+      <div className="min-h-screen flex flex-col bg-gray-50">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center px-4 py-16">
+          <Card className="w-full max-w-md p-8 text-center">
+            <div className="bg-[#004406] p-3 rounded-xl mb-4 w-fit mx-auto">
+              <Ticket className="w-7 h-7 text-white" />
+            </div>
+            <h1 className="text-2xl font-bold mb-2">Check your email</h1>
+            <p className="text-muted-foreground mb-6">
+              We sent a verification link to{' '}
+              <span className="font-medium text-foreground">{form.email}</span>.
+              Click the link to activate your account before signing in.
+            </p>
+            <Link to="/signin" className="text-primary font-medium hover:underline text-sm">
+              Back to Sign In
+            </Link>
+          </Card>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">

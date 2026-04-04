@@ -42,8 +42,7 @@ export const loginUser = createAsyncThunk('auth/login', async (credentials: Logi
 export const registerUser = createAsyncThunk('auth/register', async (data: RegisterPayload, { rejectWithValue }) => {
   try {
     const response = await authAPI.register(data);
-    localStorage.setItem('accessToken', response.data.accessToken);
-    localStorage.setItem('refreshToken', response.data.refreshToken);
+    // Registration no longer returns tokens — email verification is required first
     return response.data;
   } catch (error: any) {
     return rejectWithValue(error.response?.data?.message || 'Registration failed');
@@ -95,11 +94,10 @@ const authSlice = createSlice({
         state.error = action.payload as string;
       })
       .addCase(registerUser.pending, (state) => { state.isLoading = true; state.error = null; })
-      .addCase(registerUser.fulfilled, (state, action) => {
+      .addCase(registerUser.fulfilled, (state) => {
+        // Registration succeeded — user must verify email before they can log in.
+        // Do NOT set isAuthenticated or store tokens here.
         state.isLoading = false;
-        state.user = action.payload.user;
-        state.accessToken = action.payload.accessToken;
-        state.isAuthenticated = true;
       })
       .addCase(registerUser.rejected, (state, action) => {
         state.isLoading = false;

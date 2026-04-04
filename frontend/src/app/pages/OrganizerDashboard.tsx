@@ -8,17 +8,11 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { LayoutDashboard, Calendar, Plus, DollarSign, BarChart3, Edit, Trash2, Eye, TrendingUp, Users, Ticket } from 'lucide-react';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LayoutDashboard, Calendar, Plus, DollarSign, BarChart3, Trash2, Eye, TrendingUp, Users, Ticket } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useAppDispatch, useAppSelector } from '../store';
 import { fetchMyEvents, createEvent, deleteEvent } from '../store/slices/eventsSlice';
-
-const categoryOptions = [
-  { id: 'music', name: 'Music' }, { id: 'technology', name: 'Technology' },
-  { id: 'food', name: 'Food & Drink' }, { id: 'sports', name: 'Sports' },
-  { id: 'arts', name: 'Arts & Culture' }, { id: 'business', name: 'Business' },
-  { id: 'education', name: 'Education' }, { id: 'theater', name: 'Theater' },
-];
+import apiClient from '../api/client';
 
 export function OrganizerDashboard() {
   const location = useLocation();
@@ -177,6 +171,13 @@ function CreateEventForm() {
   const { isLoading, error } = useAppSelector((state) => state.events);
   const [form, setForm] = useState({ title: '', description: '', category: '', capacity: '', startDate: '', endDate: '', venue: '', city: '', state: '', country: '', isOnline: false, onlineLink: '' });
   const [success, setSuccess] = useState(false);
+  const [categories, setCategories] = useState<{ _id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    apiClient.get('/categories')
+      .then((res) => setCategories(res.data.categories || []))
+      .catch(() => setCategories([]));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent, status: 'draft' | 'published' = 'published') => {
     e.preventDefault();
@@ -205,8 +206,12 @@ function CreateEventForm() {
               <div>
                 <Label>Category *</Label>
                 <Select value={form.category} onValueChange={(v) => setForm((p) => ({ ...p, category: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-                  <SelectContent>{categoryOptions.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                  <SelectTrigger><SelectValue placeholder={categories.length === 0 ? 'Loading...' : 'Select category'} /></SelectTrigger>
+                  <SelectContent>
+                    {categories.map((c) => (
+                      <SelectItem key={c._id} value={c._id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
                 </Select>
               </div>
               <div><Label>Capacity *</Label><Input type="number" value={form.capacity} onChange={(e) => setForm((p) => ({ ...p, capacity: e.target.value }))} placeholder="100" required /></div>
@@ -234,7 +239,7 @@ function CreateEventForm() {
         {error && <p className="text-sm text-destructive">{error}</p>}
         {success && <p className="text-sm text-[#004406]">Event created! Redirecting...</p>}
         <div className="flex gap-3 pt-4">
-          <Button type="submit" size="lg" className="bg-[#004406] hover:bg-[#003305] text-white" disabled={isLoading}>{isLoading ? 'Creating...' : 'Publish Event'}</Button>
+          <Button type="submit" size="lg" className="bg-[#004406] hover:bg-[#003305] text-white" disabled={isLoading || !form.category}>{isLoading ? 'Creating...' : 'Publish Event'}</Button>
           <Button type="button" variant="outline" size="lg" disabled={isLoading} onClick={(e) => handleSubmit(e as any, 'draft')}>Save as Draft</Button>
         </div>
       </form>

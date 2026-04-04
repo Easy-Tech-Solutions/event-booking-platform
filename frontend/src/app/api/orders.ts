@@ -23,7 +23,7 @@ export interface CreateOrderPayload {
 
 export interface ConfirmOrderPayload {
   orderId: string;
-  paymentIntentId: string;
+  paymentMethodId: string;
 }
 
 export const ordersAPI = {

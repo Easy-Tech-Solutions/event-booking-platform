@@ -91,7 +91,7 @@ export function BookingFlow() {
     }
 
     if (paymentIntent?.status === 'succeeded') {
-      const result = await dispatch(confirmOrder({ orderId: currentOrder._id, paymentIntentId: paymentIntent.id }));
+      const result = await dispatch(confirmOrder({ orderId: currentOrder._id, paymentMethodId: paymentIntent.payment_method as string }));
       if (confirmOrder.fulfilled.match(result)) {
         setCurrentStep(4);
       }
