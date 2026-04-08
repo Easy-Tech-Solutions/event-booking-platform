@@ -17,6 +17,7 @@ import orderRoutes from "./routes/order.routes.js";
 import webhookRoutes from "./routes/webhook.routes.js";
 import categoryRoutes from "./routes/category.routes.js";
 import ticketRoutes from "./routes/ticket.routes.js";
+import adminRoutes from "./routes/admin.routes.js";
 
 const { CLIENT_URL } = env;
 
@@ -67,6 +68,7 @@ app.use("/api/ticket-types", ticketTypeRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/tickets", ticketRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Error handling
 app.use(notFound);
