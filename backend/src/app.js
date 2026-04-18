@@ -19,19 +19,39 @@ import categoryRoutes from "./routes/category.routes.js";
 import ticketRoutes from "./routes/ticket.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 
-const { CLIENT_URL } = env;
+// const { CLIENT_URL } = env;
 
 const app = express();
 
 // Security middleware
 app.use(helmet());
+
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:8080",
+  "https://eventhub.vercel.app",
+];
+
 app.use(
   cors({
-    origin: CLIENT_URL,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`Not allowed by CORS: ${origin}`));
+      }
+    },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    maxAge: 86400,
   }),
 );
-
+// ====================================================
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
