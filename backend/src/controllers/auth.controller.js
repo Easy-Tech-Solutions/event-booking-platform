@@ -67,6 +67,14 @@ const login = async (req, res, next) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
+    // ── Block unverified users from logging in ───────────────────────────────
+    if (!user.isVerified) {
+      return res.status(403).json({
+        message:
+          "Please verify your email before logging in. Check your inbox for the verification link.",
+      });
+    }
+
     const { accessToken, refreshToken } = generateTokens({ userId: user._id });
     user.refreshToken = refreshToken;
     await user.save();
@@ -167,24 +175,20 @@ const forgotPassword = async (req, res, next) => {
         .status(404)
         .json({ message: "No account with that email exists." });
     }
+
     const resetToken = crypto.randomBytes(32).toString("hex");
-
     existingUser.resetPasswordToken = resetToken;
-    existingUser.resetPasswordExpires = Date.now() + 24 * 60 * 60 * 1000;
-
+    existingUser.resetPasswordExpires = Date.now() + 1 * 60 * 60 * 1000;
     await existingUser.save();
 
     const resetPasswordLink = `http://localhost:5000/api/auth/reset-password/${resetToken}`;
-
     const { subject, html } = resetPasswordEmailTemplate(
       existingUser.firstName,
       resetPasswordLink,
     );
     await sendEmail(existingUser.email, subject, html);
 
-    res.status(200).json({
-      message: "Password reset email sent",
-    });
+    res.status(200).json({ message: "Password reset email sent" });
   } catch (error) {
     next(error);
   }

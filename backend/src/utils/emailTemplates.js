@@ -13,7 +13,7 @@ const verificationEmailTemplate = (firstName, verificationLink) => {
   };
 };
 
-const resetPasswordEmailTemplate = (firstName, resetLink) => {  
+const resetPasswordEmailTemplate = (firstName, resetLink) => {
   return {
     subject: "Reset your Event Hub Password",
     html: `
@@ -27,4 +27,54 @@ const resetPasswordEmailTemplate = (firstName, resetLink) => {
     `,
   };
 };
-export { verificationEmailTemplate, resetPasswordEmailTemplate };
+
+const orderConfirmationEmailTemplate = ({
+  firstName,
+  orderNumber,
+  eventTitle,
+  eventDate,
+  eventLocation,
+  items,
+  totalAmount,
+  ticketCount,
+}) => {
+  const formattedDate = new Date(eventDate).toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const itemsList = items
+    .map((item) => `<li>${item.quantity}x ${item.ticketType?.name || "Ticket"} — $${item.price}</li>`)
+    .join("");
+
+  return {
+    subject: `Order Confirmed — ${eventTitle}`,
+    html: `
+    <h2>Hi ${firstName},</h2>
+    <p>Your order has been confirmed! 🎉</p>
+    <hr/>
+    <h3>Order Details</h3>
+    <p><strong>Order Number:</strong> ${orderNumber}</p>
+    <p><strong>Event:</strong> ${eventTitle}</p>
+    <p><strong>Date:</strong> ${formattedDate}</p>
+    <p><strong>Location:</strong> ${eventLocation?.venue || ""} ${eventLocation?.city || ""}</p>
+    <hr/>
+    <h3>Tickets</h3>
+    <ul>${itemsList}</ul>
+    <p><strong>Total Paid:</strong> $${totalAmount}</p>
+    <p><strong>Tickets:</strong> ${ticketCount} ticket(s)</p>
+    <hr/>
+    <p>You can view your tickets in the Event Hub app under "My Tickets".</p>
+    <p>Please present your QR code at the door for check-in.</p>
+    <p>Thanks,<br/>The Event Hub Team</p>
+    `,
+  };
+};
+
+export {
+  verificationEmailTemplate,
+  resetPasswordEmailTemplate,
+  orderConfirmationEmailTemplate,
+};

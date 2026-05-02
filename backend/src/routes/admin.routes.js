@@ -10,8 +10,10 @@ import {
   getOrganizerRequests,
   approveOrganizer,
   rejectOrganizer,
+  getAllEvents,
+  getAllOrders,
+  getAnalytics,
 } from "../controllers/admin.controller.js";
-import { requestOrganizer } from "../controllers/admin.controller.js";
 
 const router = express.Router();
 
@@ -31,6 +33,13 @@ router.get("/organizer-requests", getOrganizerRequests);
 router.patch("/users/:id/approve-organizer", approveOrganizer);
 router.patch("/users/:id/reject-organizer", rejectOrganizer);
 
-router.post("/request-organizer", authenticate, requestOrganizer);
+// ── Event Management ──────────────────────────────────────────────────────────
+router.get("/events", getAllEvents);
+
+// ── Order Management ──────────────────────────────────────────────────────────
+router.get("/orders", getAllOrders);
+
+// ── Analytics ─────────────────────────────────────────────────────────────────
+router.get("/analytics", getAnalytics);
 
 export default router;
