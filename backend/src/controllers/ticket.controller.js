@@ -4,13 +4,20 @@ import Event from "../models/Event.model.js";
 
 const checkInTicket = async (req, res, next) => {
   try {
-    const { ticketId } = req.body;
+    const { ticketId, ticketNumber, eventId } = req.body;
 
-    if (!ticketId) {
-      return res.status(400).json({ message: "ticketId is required." });
+    if (!ticketId && !ticketNumber) {
+      return res.status(400).json({
+        message: "ticketId or ticketNumber is required.",
+      });
     }
 
-    const ticket = await Ticket.findById(ticketId)
+    const ticketQuery = ticketId ? { _id: ticketId } : { ticketNumber };
+    if (eventId) {
+      ticketQuery.event = eventId;
+    }
+
+    const ticket = await Ticket.findOne(ticketQuery)
       .populate("event")
       .populate("holder", "firstName lastName email")
       .populate("ticketType", "name");
@@ -73,6 +80,7 @@ const checkInTicket = async (req, res, next) => {
       valid: true,
       message: "Check-in successful!",
       checkedInAt: checkIn.checkInTime,
+      attendee: `${ticket.holder.firstName} ${ticket.holder.lastName}`,
       ticket: {
         ticketNumber: ticket.ticketNumber,
         ticketType: ticket.ticketType.name,

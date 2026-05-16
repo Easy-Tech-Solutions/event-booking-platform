@@ -26,20 +26,35 @@ const app = express();
 // Security middleware
 app.use(helmet());
 
-const allowedOrigins = [
+const normalizeOrigin = (origin = "") => origin.trim().replace(/\/$/, "");
+
+const parseOrigins = (origins = "") =>
+  origins
+    .split(",")
+    .map(normalizeOrigin)
+    .filter(Boolean);
+
+const localOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
   "http://localhost:5174",
   "http://localhost:8080",
-  "https://eventhub.vercel.app",
 ];
+
+const configuredOrigins = [normalizeOrigin(env.CLIENT_URL), ...parseOrigins(env.CLIENT_URLS)];
+const allowedOrigins = Array.from(
+  new Set([
+    ...(env.NODE_ENV !== "production" ? localOrigins : []),
+    ...configuredOrigins,
+  ].filter(Boolean)),
+);
 
 app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
 
-      if (allowedOrigins.includes(origin)) {
+      if (allowedOrigins.includes(normalizeOrigin(origin))) {
         callback(null, true);
       } else {
         callback(new Error(`Not allowed by CORS: ${origin}`));

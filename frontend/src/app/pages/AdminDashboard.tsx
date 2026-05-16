@@ -70,11 +70,21 @@ function PlatformOverview() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch aggregate stats — these endpoints will be added by the backend team
-    // For now we show zeros until the API is ready
-    Promise.allSettled([
-      apiClient.get('/admin/stats').catch(() => null),
-    ]).finally(() => setIsLoading(false));
+    apiClient
+      .get('/admin/analytics')
+      .then((response) => {
+        const data = response.data;
+        setStats({
+          users: data?.users?.total || 0,
+          events: data?.events?.total || 0,
+          revenue: data?.revenue?.total || 0,
+          pendingEvents: 0,
+        });
+      })
+      .catch(() => {
+        setStats({ users: 0, events: 0, revenue: 0, pendingEvents: 0 });
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   const statCards = [
@@ -121,12 +131,12 @@ function UserManagement() {
   }, [searchQuery, roleFilter]);
 
   const handleRoleChange = async (userId: string, role: string) => {
-    await apiClient.put(`/admin/users/${userId}`, { role }).catch(() => null);
+    await apiClient.patch(`/admin/users/${userId}/role`, { role }).catch(() => null);
     setUsers((prev) => prev.map((u) => u._id === userId ? { ...u, role } : u));
   };
 
   const handleSuspend = async (userId: string) => {
-    await apiClient.put(`/admin/users/${userId}/suspend`).catch(() => null);
+    await apiClient.patch(`/admin/users/${userId}/suspend`).catch(() => null);
     setUsers((prev) => prev.map((u) => u._id === userId ? { ...u, isSuspended: true } : u));
   };
 
@@ -190,14 +200,14 @@ function EventModeration() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    apiClient.get('/events', { params: { status: 'published', limit: 20 } })
+    apiClient.get('/admin/events', { params: { limit: 20 } })
       .then((r) => setEvents(r.data.events || []))
       .catch(() => setEvents([]))
       .finally(() => setIsLoading(false));
   }, []);
 
   const handleStatusChange = async (eventId: string, status: string) => {
-    await apiClient.put(`/events/${eventId}`, { status }).catch(() => null);
+    await apiClient.patch(`/admin/events/${eventId}/status`, { status }).catch(() => null);
     setEvents((prev) => prev.map((e) => e._id === eventId ? { ...e, status } : e));
   };
 
@@ -241,7 +251,6 @@ function PaymentsRefunds() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Admin orders endpoint — backend team needs to add /admin/orders
     apiClient.get('/admin/orders').then((r) => setOrders(r.data.orders || [])).catch(() => setOrders([])).finally(() => setIsLoading(false));
   }, []);
 
