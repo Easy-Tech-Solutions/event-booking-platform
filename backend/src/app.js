@@ -32,7 +32,7 @@ const allowedOrigins = [
   "http://localhost:5174",
   "http://localhost:8080",
   "https://eventhub-iota.vercel.app",
-  "https://eventhub-iota-git-*-*.vercel.app"
+  "https://eventhub-iota-git-*-*.vercel.app",
 ];
 
 app.use(
@@ -40,7 +40,10 @@ app.use(
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
 
-      if (allowedOrigins.includes(origin)|| origin.match(/eventhub-iota-git-.*\.vercel\.app/)) {
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.match(/eventhub-iota-git-.*\.vercel\.app/)
+      ) {
         callback(null, true);
       } else {
         callback(new Error(`Not allowed by CORS: ${origin}`));
