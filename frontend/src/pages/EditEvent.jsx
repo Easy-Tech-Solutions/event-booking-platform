@@ -44,7 +44,7 @@ const EditEvent = () => {
         });
       } catch (error) {
         toast.error('Failed to fetch event details');
-        navigate('/dashboard/my-events');
+        navigate('/dashboard/events');
       } finally {
         setIsLoading(false);
       }
@@ -58,7 +58,7 @@ const EditEvent = () => {
     try {
       await eventAPI.updateEvent(id, formData);
       toast.success('Event updated successfully');
-      navigate('/dashboard/my-events');
+      navigate('/dashboard/events');
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update event');
     }
@@ -114,7 +114,7 @@ const EditEvent = () => {
                 value={formData.title}
                 onChange={handleChange}
                 required
-                className="input-field"
+                className="input"
                 placeholder="Enter event title"
               />
             </div>
@@ -129,7 +129,7 @@ const EditEvent = () => {
                 onChange={handleChange}
                 required
                 rows={4}
-                className="input-field"
+                className="input"
                 placeholder="Describe your event"
               />
             </div>
@@ -145,7 +145,7 @@ const EditEvent = () => {
                   value={formData.startDate}
                   onChange={handleChange}
                   required
-                  className="input-field"
+                  className="input"
                 />
               </div>
 
@@ -159,7 +159,7 @@ const EditEvent = () => {
                   value={formData.endDate}
                   onChange={handleChange}
                   required
-                  className="input-field"
+                  className="input"
                 />
               </div>
             </div>
@@ -175,7 +175,7 @@ const EditEvent = () => {
                 onChange={handleChange}
                 required
                 min="1"
-                className="input-field"
+                className="input"
                 placeholder="Maximum number of attendees"
               />
             </div>
@@ -209,7 +209,7 @@ const EditEvent = () => {
                   name="location.venue"
                   value={formData.location.venue}
                   onChange={handleChange}
-                  className="input-field"
+                  className="input"
                   placeholder="Venue name"
                 />
               </div>
@@ -223,7 +223,7 @@ const EditEvent = () => {
                   name="location.address"
                   value={formData.location.address}
                   onChange={handleChange}
-                  className="input-field"
+                  className="input"
                   placeholder="Street address"
                 />
               </div>
@@ -238,7 +238,7 @@ const EditEvent = () => {
                     name="location.city"
                     value={formData.location.city}
                     onChange={handleChange}
-                    className="input-field"
+                    className="input"
                     placeholder="City"
                   />
                 </div>
@@ -252,7 +252,7 @@ const EditEvent = () => {
                     name="location.state"
                     value={formData.location.state}
                     onChange={handleChange}
-                    className="input-field"
+                    className="input"
                     placeholder="State"
                   />
                 </div>
@@ -264,7 +264,7 @@ const EditEvent = () => {
         <div className="flex justify-end space-x-4">
           <button
             type="button"
-            onClick={() => navigate('/dashboard/my-events')}
+            onClick={() => navigate('/dashboard/events')}
             className="btn-secondary"
           >
             Cancel

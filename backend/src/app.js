@@ -8,6 +8,7 @@ import env from './config/env.js';
 
 // Import routes
 import authRoutes from './routes/auth.routes.js';
+import categoryRoutes from './routes/category.routes.js';
 import eventRoutes from './routes/event.routes.js';
 import ticketRoutes from './routes/ticket.routes.js';
 import orderRoutes from './routes/order.routes.js';
@@ -53,6 +54,7 @@ app.get('/api/health', (req, res) => {
 
 // API routes
 app.use('/api/auth', authRoutes);
+app.use('/api/categories', categoryRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/orders', orderRoutes);

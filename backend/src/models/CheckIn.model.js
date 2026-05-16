@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const checkInSchema = new mongoose.Schema({
   ticket: {
@@ -41,4 +41,4 @@ const checkInSchema = new mongoose.Schema({
 checkInSchema.index({ event: 1, checkInTime: 1 });
 checkInSchema.index({ ticket: 1 }, { unique: true });
 
-module.exports = mongoose.model('CheckIn', checkInSchema);
+export default mongoose.model('CheckIn', checkInSchema);
