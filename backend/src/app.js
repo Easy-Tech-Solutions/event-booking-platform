@@ -54,7 +54,9 @@ app.use(
 
       if (
         allowedOrigins.includes(normalizeOrigin(origin)) ||
-        /eventhub-iota-git-.*\.vercel\.app$/.test(origin)
+        /^https:\/\/eventhub-iota(-git-.*)?\.vercel\.app$/.test(
+          normalizeOrigin(origin),
+        )
       ) {
         callback(null, true);
       } else {
