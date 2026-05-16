@@ -11,7 +11,6 @@ const CreateEvent = () => {
   const dispatch = useDispatch();
   const { register, handleSubmit, watch, formState: { errors } } = useForm();
   const isOnline = watch('isOnline');
-<<<<<<< HEAD
   const [categories, setCategories] = React.useState([]);
 
   React.useEffect(() => {
@@ -26,9 +25,6 @@ const CreateEvent = () => {
 
     fetchCategories();
   }, []);
-=======
-  const isRecurring = watch('isRecurring');
->>>>>>> dalton
 
   const onSubmit = async (data) => {
     try {
