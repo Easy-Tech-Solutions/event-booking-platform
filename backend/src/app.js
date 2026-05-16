@@ -26,7 +26,15 @@ const app = express();
 // Security middleware
 app.use(helmet());
 
-const allowedOrigins = [
+const normalizeOrigin = (origin = "") => origin.trim().replace(/\/$/, "");
+
+const parseOrigins = (origins = "") =>
+  origins
+    .split(",")
+    .map(normalizeOrigin)
+    .filter(Boolean);
+
+const localOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
   "http://localhost:5174",

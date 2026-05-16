@@ -2,8 +2,11 @@ import Event from "../models/Event.model.js";
 import TicketType from "../models/TicketType.model.js";
 import Order from "../models/Order.model.js";
 import Ticket from "../models/Ticket.model.js";
+import CheckIn from "../models/CheckIn.model.js";
 import { validationResult } from "express-validator";
 import User from "../models/User.model.js";
+import { uploadEventImage } from "../config/cloudinary.js";
+import { sendEmail } from "../utils/sendEmail.js";
 
 const createEvent = async (req, res, next) => {
   try {
@@ -14,7 +17,8 @@ const createEvent = async (req, res, next) => {
 
     let imagePath = null;
     if (req.file) {
-      imagePath = `/uploads/events/${req.file.filename}`;
+      const uploaded = await uploadEventImage(req.file.buffer, req.file.mimetype);
+      imagePath = uploaded.secure_url;
     }
 
     const eventData = {
@@ -460,6 +464,100 @@ const getOrganizerEarnings = async (req, res, next) => {
   }
 };
 
+const getEventCheckInStats = async (req, res, next) => {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) {
+      return res.status(404).json({ message: "Event not found." });
+    }
+
+    if (
+      event.organizer.toString() !== req.user._id.toString() &&
+      req.user.role !== "admin"
+    ) {
+      return res.status(403).json({ message: "Not authorized." });
+    }
+
+    const [totalRegistered, checkedIn] = await Promise.all([
+      Ticket.countDocuments({ event: event._id }),
+      CheckIn.countDocuments({ event: event._id }),
+    ]);
+
+    return res.json({
+      totalRegistered,
+      checkedIn,
+      activeNow: checkedIn,
+      venue: event.location?.venue || event.location?.city || "",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const blastEventMessage = async (req, res, next) => {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) {
+      return res.status(404).json({ message: "Event not found." });
+    }
+
+    if (
+      event.organizer.toString() !== req.user._id.toString() &&
+      req.user.role !== "admin"
+    ) {
+      return res.status(403).json({ message: "Not authorized." });
+    }
+
+    const { type, subject, message } = req.body;
+    if (!type || !["email", "sms"].includes(type)) {
+      return res
+        .status(400)
+        .json({ message: "type is required and must be email or sms." });
+    }
+
+    if (!message?.trim()) {
+      return res.status(400).json({ message: "message is required." });
+    }
+
+    if (type === "sms") {
+      return res
+        .status(501)
+        .json({ message: "SMS blast is not configured yet." });
+    }
+
+    const emailSubject = subject?.trim() || `Update for ${event.title}`;
+
+    const tickets = await Ticket.find({ event: event._id }).select("holder");
+    const holderIds = [...new Set(tickets.map((ticket) => ticket.holder.toString()))];
+    const attendees = await User.find({ _id: { $in: holderIds } }).select(
+      "email firstName",
+    );
+
+    if (!attendees.length) {
+      return res.json({ message: "No attendees found for this event.", sent: 0 });
+    }
+
+    const html = `
+      <div>
+        <p>Hello,</p>
+        <p>${message}</p>
+        <p><strong>Event:</strong> ${event.title}</p>
+      </div>
+    `;
+
+    await Promise.all(
+      attendees.map((attendee) => sendEmail(attendee.email, emailSubject, html)),
+    );
+
+    return res.json({
+      message: "Blast sent successfully.",
+      sent: attendees.length,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export {
   createEvent,
   getEvents,
@@ -473,4 +571,6 @@ export {
   getEventAttendees,
   getEventRevenue,
   getOrganizerEarnings,
+  getEventCheckInStats,
+  blastEventMessage,
 };

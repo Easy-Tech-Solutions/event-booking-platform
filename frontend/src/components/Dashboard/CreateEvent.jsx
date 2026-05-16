@@ -4,12 +4,27 @@ import { useDispatch } from 'react-redux';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-hot-toast';
 import { createEvent } from '../../store/slices/eventSlice';
+import { categoryAPI } from '../../api/categories';
 
 const CreateEvent = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const { register, handleSubmit, watch, formState: { errors } } = useForm();
   const isOnline = watch('isOnline');
+  const [categories, setCategories] = React.useState([]);
+
+  React.useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const response = await categoryAPI.getCategories();
+        setCategories(response.data.categories || []);
+      } catch (error) {
+        toast.error('Failed to load categories');
+      }
+    };
+
+    fetchCategories();
+  }, []);
 
   const onSubmit = async (data) => {
     try {
@@ -20,7 +35,7 @@ const CreateEvent = () => {
         endDate: new Date(data.endDate).toISOString(),
         capacity: parseInt(data.capacity),
         isOnline: data.isOnline || false,
-        category: '507f1f77bcf86cd799439011', // Default category ID - in real app, this would be selected
+        category: data.category,
         tags: data.tags ? data.tags.split(',').map(tag => tag.trim()) : []
       };
 
@@ -66,6 +81,26 @@ const CreateEvent = () => {
               />
               {errors.title && (
                 <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Category *
+              </label>
+              <select
+                {...register('category', { required: 'Category is required' })}
+                className="input"
+              >
+                <option value="">Select a category</option>
+                {categories.map((category) => (
+                  <option key={category._id} value={category._id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+              {errors.category && (
+                <p className="mt-1 text-sm text-red-600">{errors.category.message}</p>
               )}
             </div>
 
@@ -228,6 +263,35 @@ const CreateEvent = () => {
                   placeholder="https://zoom.us/j/..."
                 />
               </div>
+            )}
+          </div>
+        </div>
+
+        <div className="card">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Recurring Schedule</h2>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Is this a recurring event?</label>
+              <input {...register('isRecurring')} type="checkbox" className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded" />
+            </div>
+            {watch('isRecurring') && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Frequency</label>
+                  <select {...register('recurrenceFrequency')} className="input">
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Interval</label>
+                  <input {...register('recurrenceInterval', { min: 1 })} type="number" min="1" className="input" placeholder="Every X weeks/months" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                  <input {...register('recurrenceEndDate')} type="date" className="input" />
+                </div>
+              </>
             )}
           </div>
         </div>

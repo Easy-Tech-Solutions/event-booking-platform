@@ -52,6 +52,10 @@ const mongoIdValidation = [
   param('id').isMongoId().withMessage('Valid ID is required')
 ];
 
+const eventIdValidation = [
+  param('eventId').isMongoId().withMessage('Valid event ID is required')
+];
+
 export {
   registerValidation,
   loginValidation,
@@ -59,5 +63,6 @@ export {
   ticketTypeValidation,
   orderValidation,
   paginationValidation,
-  mongoIdValidation
+  mongoIdValidation,
+  eventIdValidation
 };

@@ -13,6 +13,8 @@ import {
   getEventAttendees,
   getEventRevenue,
   getOrganizerEarnings,
+  getEventCheckInStats,
+  blastEventMessage,
 } from "../controllers/event.controller.js";
 import {
   eventValidation,
@@ -38,6 +40,20 @@ router.get(
   authorize("organizer", "admin"),
   getOrganizerEarnings,
 );
+router.get(
+  "/:id/checkin-stats",
+  authenticate,
+  authorize("organizer", "admin"),
+  mongoIdValidation,
+  getEventCheckInStats,
+);
+router.post(
+  "/:id/blast",
+  authenticate,
+  authorize("organizer", "admin"),
+  mongoIdValidation,
+  blastEventMessage,
+);
 
 router.get("/:id", mongoIdValidation, getEventById);
 router.post("/:id/favorite", authenticate, mongoIdValidation, addFavorite);
@@ -59,9 +75,9 @@ router.get(
 
 router.post(
   "/",
-  upload.single("image"),
   authenticate,
   authorize("organizer", "admin"),
+  upload.single("image"),
   eventValidation,
   createEvent,
 );

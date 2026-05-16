@@ -69,10 +69,11 @@ const eventSlice = createSlice({
       .addCase(fetchEvents.fulfilled, (state, action) => {
         state.isLoading = false;
         state.events = action.payload.events;
+        const pagination = action.payload.pagination || {};
         state.pagination = {
-          currentPage: action.payload.currentPage,
-          totalPages: action.payload.totalPages,
-          total: action.payload.total
+          currentPage: pagination.currentPage || action.payload.currentPage || 1,
+          totalPages: pagination.totalPages || action.payload.totalPages || 1,
+          total: pagination.total || action.payload.total || 0
         };
       })
       .addCase(fetchEvents.rejected, (state, action) => {
