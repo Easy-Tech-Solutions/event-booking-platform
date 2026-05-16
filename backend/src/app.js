@@ -8,19 +8,39 @@ import env from './config/env.js';
 
 // Import routes
 import authRoutes from './routes/auth.routes.js';
+import categoryRoutes from './routes/category.routes.js';
 import eventRoutes from './routes/event.routes.js';
 import ticketRoutes from './routes/ticket.routes.js';
 import orderRoutes from './routes/order.routes.js';
 import webhookRoutes from './routes/webhook.routes.js';
 
-const { CLIENT_URL } = env;
+const { CLIENT_URL, CLIENT_URLS, NODE_ENV } = env;
 
 const app = express();
 
 // Security middleware
 app.use(helmet());
+
+const allowedOrigins = [
+  CLIENT_URL,
+  ...CLIENT_URLS.split(',').map((origin) => origin.trim()).filter(Boolean)
+];
+
 app.use(cors({
-  origin: CLIENT_URL,
+  origin: (origin, callback) => {
+    // Allow same-origin/server-to-server requests without Origin header.
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    if (NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true
 }));
 
@@ -53,6 +73,7 @@ app.get('/api/health', (req, res) => {
 
 // API routes
 app.use('/api/auth', authRoutes);
+app.use('/api/categories', categoryRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/orders', orderRoutes);

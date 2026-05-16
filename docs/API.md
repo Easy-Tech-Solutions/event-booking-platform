@@ -115,6 +115,50 @@ Content-Type: application/json
 GET /tickets/event/:eventId
 ```
 
+#### Check In Ticket (Organizer/Admin only)
+```http
+POST /tickets/:id/check-in
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "checkInMethod": "qr_scan", // optional: qr_scan | manual | mobile_app
+  "location": { "lat": 40.7128, "lng": -74.0060 },
+  "notes": "Checked at main gate"
+}
+```
+
+### Categories
+
+#### Get Categories
+```http
+GET /categories
+```
+
+#### Create Category (Organizer/Admin only)
+```http
+POST /categories
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "name": "Workshops",
+  "description": "Hands-on learning events",
+  "color": "#0f766e"
+}
+```
+
+#### Update Category (Organizer/Admin only)
+```http
+PUT /categories/:id
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "isActive": false
+}
+```
+
 ### Orders
 
 #### Create Order

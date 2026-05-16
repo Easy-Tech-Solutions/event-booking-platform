@@ -131,6 +131,12 @@ The application will automatically create the necessary collections when you sta
 - `POST /api/tickets` - Create ticket type (organizer/admin)
 - `PUT /api/tickets/:id` - Update ticket type (organizer/admin)
 - `DELETE /api/tickets/:id` - Delete ticket type (organizer/admin)
+- `POST /api/tickets/:id/check-in` - Check in ticket (organizer/admin)
+
+### Categories
+- `GET /api/categories` - Get categories
+- `POST /api/categories` - Create category (organizer/admin)
+- `PUT /api/categories/:id` - Update category (organizer/admin)
 
 ### Orders
 - `POST /api/orders` - Create order
@@ -178,6 +184,8 @@ CLIENT_URL=https://yourdomain.com
 ```bash
 docker-compose up -d
 ```
+
+The repository now includes both [backend/Dockerfile](backend/Dockerfile) and [frontend/Dockerfile](frontend/Dockerfile) used by [docker-compose.yml](docker-compose.yml).
 
 ### Manual Deployment
 1. Build frontend: `cd frontend && npm run build`
