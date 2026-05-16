@@ -42,7 +42,15 @@ const register = async (req, res, next) => {
       firstName,
       verificationLink,
     );
-    await sendEmail(user.email, subject, html);
+    try {
+      await sendEmail(user.email, subject, html);
+    } catch (emailError) {
+      await User.findByIdAndDelete(user._id);
+      return res.status(503).json({
+        message:
+          "Unable to send verification email right now. Please try again in a few minutes.",
+      });
+    }
 
     res.status(201).json({
       message:
