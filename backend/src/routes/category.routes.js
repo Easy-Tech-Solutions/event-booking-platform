@@ -1,16 +1,13 @@
 import express from 'express';
-import {
-	getCategories,
-	createCategory,
-	updateCategory
-} from '../controllers/category.controller.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
-import { mongoIdValidation } from '../validators/index.js';
+import { createCategory, getCategories } from '../controllers/category.controller.js';
 
 const router = express.Router();
 
+// Public
 router.get('/', getCategories);
-router.post('/', authenticate, authorize('organizer', 'admin'), createCategory);
-router.put('/:id', authenticate, authorize('organizer', 'admin'), mongoIdValidation, updateCategory);
+
+// Admin only
+router.post('/', authenticate, authorize('admin'), createCategory);
 
 export default router;
