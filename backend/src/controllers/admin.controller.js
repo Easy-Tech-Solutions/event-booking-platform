@@ -2,6 +2,7 @@ import User from "../models/User.model.js";
 import Event from "../models/Event.model.js";
 import Order from "../models/Order.model.js";
 import Ticket from "../models/Ticket.model.js";
+import TicketType from "../models/TicketType.model.js";
 
 // ─── GET /api/admin/users ─────────────────────────────────────────────────────
 const getAllUsers = async (req, res, next) => {
@@ -253,7 +254,6 @@ const rejectOrganizer = async (req, res, next) => {
 };
 
 // ─── GET /api/admin/events ────────────────────────────────────────────────────
-// Admin views all events regardless of status
 const getAllEvents = async (req, res, next) => {
   try {
     const page = parseInt(req.query.page, 10) || 1;
@@ -292,8 +292,37 @@ const getAllEvents = async (req, res, next) => {
   }
 };
 
+// ─── PATCH /api/admin/events/:id/status ──────────────────────────────────────
+// Admin changes event status
+const changeEventStatus = async (req, res, next) => {
+  try {
+    const { status } = req.body;
+    const validStatuses = ["draft", "published", "cancelled", "completed"];
+
+    if (!status || !validStatuses.includes(status)) {
+      return res.status(400).json({
+        message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
+      });
+    }
+
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ message: "Event not found." });
+
+    event.status = status;
+    await event.save();
+
+    return res.json({
+      message: `Event status changed to "${status}" successfully.`,
+      eventId: event._id,
+      title: event.title,
+      status: event.status,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // ─── GET /api/admin/orders ────────────────────────────────────────────────────
-// Admin views all orders
 const getAllOrders = async (req, res, next) => {
   try {
     const page = parseInt(req.query.page, 10) || 1;
@@ -328,7 +357,6 @@ const getAllOrders = async (req, res, next) => {
 };
 
 // ─── GET /api/admin/analytics ────────────────────────────────────────────────
-// Admin views platform analytics overview
 const getAnalytics = async (req, res, next) => {
   try {
     const [
@@ -368,19 +396,10 @@ const getAnalytics = async (req, res, next) => {
         organizers: totalOrganizers,
         attendees: totalAttendees,
       },
-      events: {
-        total: totalEvents,
-      },
-      orders: {
-        total: totalOrders,
-        completed: completedOrders,
-      },
-      tickets: {
-        total: totalTickets,
-      },
-      revenue: {
-        total: totalRevenue,
-      },
+      events: { total: totalEvents },
+      orders: { total: totalOrders, completed: completedOrders },
+      tickets: { total: totalTickets },
+      revenue: { total: totalRevenue },
       mostPopularEvents,
     });
   } catch (error) {
@@ -400,6 +419,7 @@ export {
   approveOrganizer,
   rejectOrganizer,
   getAllEvents,
+  changeEventStatus,
   getAllOrders,
   getAnalytics,
 };

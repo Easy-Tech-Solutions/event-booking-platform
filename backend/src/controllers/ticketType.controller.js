@@ -2,34 +2,51 @@ import TicketType from "../models/TicketType.model.js";
 import Event from "../models/Event.model.js";
 import { validationResult } from "express-validator";
 
+// ─── POST /api/ticket-types ───────────────────────────────────────────────────
 const createTicketType = async (req, res, next) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+    const {
+      event,
+      name,
+      description,
+      price,
+      quantity,
+      maxPerOrder,
+      saleStartDate,
+      saleEndDate,
+      benefits,
+    } = req.body;
 
-    const event = await Event.findById(req.body.event);
-    if (!event) {
-      return res.status(404).json({ message: "Event not found" });
-    }
+    const eventDoc = await Event.findById(event);
+    if (!eventDoc) return res.status(404).json({ message: "Event not found." });
 
-    if (
-      event.organizer.toString() !== req.user._id.toString() &&
-      req.user.role !== "admin"
-    ) {
+    if (eventDoc.organizer.toString() !== req.user._id.toString()) {
       return res
         .status(403)
-        .json({ message: "Not authorized to create tickets for this event" });
+        .json({ message: "Not authorized to add ticket types to this event." });
     }
 
-    const ticketType = new TicketType(req.body);
+    const ticketType = new TicketType({
+      event,
+      name,
+      description,
+      price,
+      quantity,
+      available: quantity, // available starts equal to quantity
+      maxPerOrder,
+      saleStartDate,
+      saleEndDate,
+      benefits,
+    });
+
     await ticketType.save();
 
-    res.status(201).json({
-      message: "Ticket type created successfully",
-      ticketType,
-    });
+    // ── Auto-close if event is sold out ─────────────────────────────────────
+    await checkAndUpdateEventCapacity(event);
+
+    res
+      .status(201)
+      .json({ message: "Ticket type created successfully.", ticketType });
   } catch (error) {
     next(error);
   }
@@ -67,40 +84,61 @@ const getTicketTypeById = async (req, res, next) => {
   }
 };
 
+// ─── PUT /api/ticket-types/:id ───────────────────────────────────────────────
 const updateTicketType = async (req, res, next) => {
   try {
     const ticketType = await TicketType.findById(req.params.id).populate(
       "event",
     );
+    if (!ticketType)
+      return res.status(404).json({ message: "Ticket type not found." });
 
-    if (!ticketType) {
-      return res.status(404).json({ message: "Ticket type not found" });
+    if (ticketType.event.organizer.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Not authorized." });
     }
 
-    if (
-      ticketType.event.organizer.toString() !== req.user._id.toString() &&
-      req.user.role !== "admin"
-    ) {
-      return res
-        .status(403)
-        .json({ message: "Not authorized to update this ticket type" });
-    }
-
-    delete req.body.sold;
-    delete req.body.event;
-
-    const updatedTicketType = await TicketType.findByIdAndUpdate(
+    const updated = await TicketType.findByIdAndUpdate(
       req.params.id,
       req.body,
       { new: true, runValidators: true },
     );
 
+    // Re-check capacity after update
+    await checkAndUpdateEventCapacity(ticketType.event._id);
+
     res.json({
-      message: "Ticket type updated successfully",
-      ticketType: updatedTicketType,
+      message: "Ticket type updated successfully.",
+      ticketType: updated,
     });
   } catch (error) {
     next(error);
+  }
+};
+
+const checkAndUpdateEventCapacity = async (eventId) => {
+  try {
+    const ticketTypes = await TicketType.find({
+      event: eventId,
+      isActive: true,
+    });
+
+    for (const tt of ticketTypes) {
+      if (tt.available <= 0 && tt.isAvailable) {
+        tt.isAvailable = false;
+        await tt.save();
+      } else if (tt.available > 0 && !tt.isAvailable) {
+        tt.isAvailable = true;
+        await tt.save();
+      }
+    }
+
+    // Check if ALL active ticket types are sold out
+    const allSoldOut = ticketTypes.every((tt) => tt.available <= 0);
+    if (allSoldOut) {
+      await Event.findByIdAndUpdate(eventId, { status: "completed" });
+    }
+  } catch (error) {
+    console.error("Capacity check error:", error.message);
   }
 };
 

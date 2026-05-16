@@ -200,18 +200,25 @@ const deleteEvent = async (req, res, next) => {
 
 const getMyEvents = async (req, res, next) => {
   try {
-    const { page = 1, limit = 10 } = req.query;
-    const events = await Event.find({ organizer: req.user._id })
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 10, 50);
 
-    const total = await Event.countDocuments({ organizer: req.user._id });
+    const [events, total] = await Promise.all([
+      Event.find({ organizer: req.user._id })
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      Event.countDocuments({ organizer: req.user._id }),
+    ]);
+
     res.json({
       events,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
-      total,
+      pagination: {
+        total,
+        totalPages: Math.ceil(total / limit),
+        currentPage: page,
+        limit,
+      },
     });
   } catch (error) {
     next(error);
@@ -278,8 +285,6 @@ const getFavorites = async (req, res, next) => {
   }
 };
 
-// ─── GET /api/events/:id/attendees ────────────────────────────────────────────
-// Organizer sees all attendees who bought tickets for their event
 const getEventAttendees = async (req, res, next) => {
   try {
     const event = await Event.findById(req.params.id);
@@ -315,8 +320,6 @@ const getEventAttendees = async (req, res, next) => {
   }
 };
 
-// ─── GET /api/events/:id/revenue ─────────────────────────────────────────────
-// Organizer sees revenue breakdown for their event
 const getEventRevenue = async (req, res, next) => {
   try {
     const event = await Event.findById(req.params.id);
@@ -354,13 +357,103 @@ const getEventRevenue = async (req, res, next) => {
       revenue: tt.price * tt.sold,
     }));
 
+    // Platform fee is 3% — organizer gets the rest
+    const platformFeeTotal = orders.reduce(
+      (sum, order) => sum + (order.fees?.platform || 0),
+      0,
+    );
+    const paymentFeeTotal = orders.reduce(
+      (sum, order) => sum + (order.fees?.payment || 0),
+      0,
+    );
+    const organizerEarnings = totalRevenue - platformFeeTotal - paymentFeeTotal;
+
     return res.json({
       event: { id: event._id, title: event.title },
       totalRevenue,
       totalOrders: orders.length,
       totalTicketsSold,
+      fees: {
+        platformFee: platformFeeTotal,
+        paymentFee: paymentFeeTotal,
+      },
+      organizerEarnings,
       revenueByTicketType,
-      orders,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── GET /api/events/:id/earnings ────────────────────────────────────────────
+// Organizer earnings dashboard — total generated + after platform fee
+const getOrganizerEarnings = async (req, res, next) => {
+  try {
+    // Get all events by this organizer
+    const events = await Event.find({ organizer: req.user._id });
+    const eventIds = events.map((e) => e._id);
+
+    // Get all completed orders for those events
+    const orders = await Order.find({
+      event: { $in: eventIds },
+      status: "completed",
+    }).populate("event", "title startDate");
+
+    const totalRevenue = orders.reduce(
+      (sum, order) => sum + order.totalAmount,
+      0,
+    );
+    const totalPlatformFees = orders.reduce(
+      (sum, order) => sum + (order.fees?.platform || 0),
+      0,
+    );
+    const totalPaymentFees = orders.reduce(
+      (sum, order) => sum + (order.fees?.payment || 0),
+      0,
+    );
+    const totalEarnings = totalRevenue - totalPlatformFees - totalPaymentFees;
+
+    // Breakdown per event
+    const earningsByEvent = events.map((event) => {
+      const eventOrders = orders.filter(
+        (o) => o.event._id.toString() === event._id.toString(),
+      );
+      const eventRevenue = eventOrders.reduce(
+        (sum, o) => sum + o.totalAmount,
+        0,
+      );
+      const eventPlatformFee = eventOrders.reduce(
+        (sum, o) => sum + (o.fees?.platform || 0),
+        0,
+      );
+      const eventPaymentFee = eventOrders.reduce(
+        (sum, o) => sum + (o.fees?.payment || 0),
+        0,
+      );
+      const eventEarnings = eventRevenue - eventPlatformFee - eventPaymentFee;
+
+      return {
+        eventId: event._id,
+        title: event.title,
+        startDate: event.startDate,
+        totalOrders: eventOrders.length,
+        grossRevenue: eventRevenue,
+        platformFee: eventPlatformFee,
+        paymentFee: eventPaymentFee,
+        netEarnings: eventEarnings,
+      };
+    });
+
+    return res.json({
+      summary: {
+        totalEvents: events.length,
+        totalOrders: orders.length,
+        grossRevenue: totalRevenue,
+        platformFees: totalPlatformFees,
+        paymentFees: totalPaymentFees,
+        netEarnings: totalEarnings,
+      },
+      earningsByEvent,
     });
   } catch (error) {
     next(error);
@@ -379,4 +472,5 @@ export {
   getFavorites,
   getEventAttendees,
   getEventRevenue,
+  getOrganizerEarnings,
 };

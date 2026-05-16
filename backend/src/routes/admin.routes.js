@@ -11,13 +11,13 @@ import {
   approveOrganizer,
   rejectOrganizer,
   getAllEvents,
+  changeEventStatus,
   getAllOrders,
   getAnalytics,
 } from "../controllers/admin.controller.js";
 
 const router = express.Router();
 
-// All admin routes require authentication and admin role
 router.use(authenticate, authorize("admin"));
 
 // ── User Management ───────────────────────────────────────────────────────────
@@ -35,6 +35,7 @@ router.patch("/users/:id/reject-organizer", rejectOrganizer);
 
 // ── Event Management ──────────────────────────────────────────────────────────
 router.get("/events", getAllEvents);
+router.patch("/events/:id/status", changeEventStatus);
 
 // ── Order Management ──────────────────────────────────────────────────────────
 router.get("/orders", getAllOrders);

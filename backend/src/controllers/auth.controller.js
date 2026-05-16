@@ -7,6 +7,7 @@ import {
   verificationEmailTemplate,
   resetPasswordEmailTemplate,
 } from "../utils/emailTemplates.js";
+import path from "path";
 
 const register = async (req, res, next) => {
   try {
@@ -36,7 +37,7 @@ const register = async (req, res, next) => {
 
     await user.save();
 
-    const verificationLink = `http://localhost:5000/api/auth/verify-email/${verificationToken}`;
+    const verificationLink = `${process.env.BASE_URL || "http://localhost:5000"}/api/auth/verify-email/${verificationToken}`;
     const { subject, html } = verificationEmailTemplate(
       firstName,
       verificationLink,
@@ -67,24 +68,17 @@ const login = async (req, res, next) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // ── Block unverified users from logging in ───────────────────────────────
-    // if (!user.isVerified) {
-    //   return res.status(403).json({
-    //     message:
-    //       "Please verify your email before logging in. Check your inbox for the verification link.",
-    //   });
-    // }
+    if (!user.isVerified) {
+      return res.status(403).json({
+        message: "Please verify your email before logging in.",
+      });
+    }
 
     const { accessToken, refreshToken } = generateTokens({ userId: user._id });
     user.refreshToken = refreshToken;
     await user.save();
 
-    res.json({
-      message: "Login successful",
-      user,
-      accessToken,
-      refreshToken,
-    });
+    res.json({ message: "Login successful", user, accessToken, refreshToken });
   } catch (error) {
     next(error);
   }
@@ -93,7 +87,6 @@ const login = async (req, res, next) => {
 const refreshToken = async (req, res, next) => {
   try {
     const { refreshToken } = req.body;
-
     if (!refreshToken) {
       return res.status(401).json({ message: "Refresh token required" });
     }
@@ -123,7 +116,6 @@ const logout = async (req, res, next) => {
     const user = await User.findById(req.user._id);
     user.refreshToken = null;
     await user.save();
-
     res.json({ message: "Logout successful" });
   } catch (error) {
     next(error);
@@ -141,7 +133,6 @@ const getProfile = async (req, res, next) => {
 const verifyEmail = async (req, res, next) => {
   try {
     const token = req.params.token;
-
     const user = await User.findOne({
       verificationToken: token,
       verificationExpires: { $gt: Date.now() },
@@ -167,7 +158,6 @@ const verifyEmail = async (req, res, next) => {
 const forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
-
     const existingUser = await User.findOne({ email });
 
     if (!existingUser) {
@@ -181,7 +171,7 @@ const forgotPassword = async (req, res, next) => {
     existingUser.resetPasswordExpires = Date.now() + 1 * 60 * 60 * 1000;
     await existingUser.save();
 
-    const resetPasswordLink = `http://localhost:5000/api/auth/reset-password/${resetToken}`;
+    const resetPasswordLink = `${process.env.BASE_URL || "http://localhost:5000"}/api/auth/reset-password/${resetToken}`;
     const { subject, html } = resetPasswordEmailTemplate(
       existingUser.firstName,
       resetPasswordLink,
@@ -221,6 +211,72 @@ const resetPassword = async (req, res, next) => {
   }
 };
 
+// ─── PUT /api/auth/profile ────────────────────────────────────────────────────
+// Update profile — firstName, lastName, phone
+const updateProfile = async (req, res, next) => {
+  try {
+    const { firstName, lastName, phone } = req.body;
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: "User not found." });
+
+    if (firstName) user.firstName = firstName;
+    if (lastName) user.lastName = lastName;
+    if (phone) user.phone = phone;
+
+    // Handle avatar upload if file is attached
+    if (req.file) {
+      user.avatar = `/uploads/avatars/${req.file.filename}`;
+    }
+
+    await user.save();
+
+    return res.json({
+      message: "Profile updated successfully.",
+      user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── PUT /api/auth/change-password ───────────────────────────────────────────
+// Change password while logged in
+const changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res
+        .status(400)
+        .json({ message: "currentPassword and newPassword are required." });
+    }
+
+    if (newPassword.length < 6) {
+      return res
+        .status(400)
+        .json({ message: "New password must be at least 6 characters." });
+    }
+
+    const user = await User.findById(req.user._id);
+
+    // Verify current password
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) {
+      return res
+        .status(401)
+        .json({ message: "Current password is incorrect." });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    return res.json({ message: "Password changed successfully." });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export {
   register,
   login,
@@ -230,4 +286,6 @@ export {
   verifyEmail,
   forgotPassword,
   resetPassword,
+  updateProfile,
+  changePassword,
 };

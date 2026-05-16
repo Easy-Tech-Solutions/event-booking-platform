@@ -12,6 +12,7 @@ import {
   getFavorites,
   getEventAttendees,
   getEventRevenue,
+  getOrganizerEarnings,
 } from "../controllers/event.controller.js";
 import {
   eventValidation,
@@ -22,10 +23,7 @@ import upload from "../middlewares/upload.js";
 
 const router = express.Router();
 
-// ── Public routes ─────────────────────────────────────────────────────────────
 router.get("/", paginationValidation, getEvents);
-
-// ── Specific routes BEFORE /:id ───────────────────────────────────────────────
 router.get(
   "/my-events",
   authenticate,
@@ -34,8 +32,13 @@ router.get(
   getMyEvents,
 );
 router.get("/favorites", authenticate, getFavorites);
+router.get(
+  "/earnings",
+  authenticate,
+  authorize("organizer", "admin"),
+  getOrganizerEarnings,
+);
 
-// ── Dynamic routes ────────────────────────────────────────────────────────────
 router.get("/:id", mongoIdValidation, getEventById);
 router.post("/:id/favorite", authenticate, mongoIdValidation, addFavorite);
 router.delete("/:id/favorite", authenticate, mongoIdValidation, removeFavorite);
@@ -54,7 +57,6 @@ router.get(
   getEventRevenue,
 );
 
-// ── Organizer routes ──────────────────────────────────────────────────────────
 router.post(
   "/",
   upload.single("image"),
