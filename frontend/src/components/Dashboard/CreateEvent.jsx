@@ -10,6 +10,7 @@ const CreateEvent = () => {
   const dispatch = useDispatch();
   const { register, handleSubmit, watch, formState: { errors } } = useForm();
   const isOnline = watch('isOnline');
+  const isRecurring = watch('isRecurring');
 
   const onSubmit = async (data) => {
     try {
@@ -228,6 +229,35 @@ const CreateEvent = () => {
                   placeholder="https://zoom.us/j/..."
                 />
               </div>
+            )}
+          </div>
+        </div>
+
+        <div className="card">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Recurring Schedule</h2>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Is this a recurring event?</label>
+              <input {...register('isRecurring')} type="checkbox" className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded" />
+            </div>
+            {watch('isRecurring') && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Frequency</label>
+                  <select {...register('recurrenceFrequency')} className="input">
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Interval</label>
+                  <input {...register('recurrenceInterval', { min: 1 })} type="number" min="1" className="input" placeholder="Every X weeks/months" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                  <input {...register('recurrenceEndDate')} type="date" className="input" />
+                </div>
+              </>
             )}
           </div>
         </div>
