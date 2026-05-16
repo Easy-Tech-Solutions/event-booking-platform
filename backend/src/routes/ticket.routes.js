@@ -1,24 +1,30 @@
-import express from 'express';
-import { authenticate, authorize } from '../middlewares/auth.js';
+import express from "express";
+import { authenticate, authorize } from "../middlewares/auth.js";
 import {
-  createTicketType,
-  getTicketTypes,
-  updateTicketType,
-  deleteTicketType,
-  checkInTicket
-} from '../controllers/ticket.controller.js';
-import {
-  ticketTypeValidation,
-  mongoIdValidation,
-  eventIdValidation
-} from '../validators/index.js';
+  checkInTicket,
+  getEventCheckIns,
+  getMyTickets,
+  getTicketById,
+} from "../controllers/ticket.controller.js";
 
 const router = express.Router();
 
-router.get('/event/:eventId', eventIdValidation, getTicketTypes);
-router.post('/', authenticate, authorize('organizer', 'admin'), ticketTypeValidation, createTicketType);
-router.put('/:id', authenticate, authorize('organizer', 'admin'), mongoIdValidation, updateTicketType);
-router.delete('/:id', authenticate, authorize('organizer', 'admin'), mongoIdValidation, deleteTicketType);
-router.post('/:id/check-in', authenticate, authorize('organizer', 'admin'), mongoIdValidation, checkInTicket);
+router.post(
+  "/checkin",
+  authenticate,
+  authorize("organizer", "admin"),
+  checkInTicket,
+);
+
+router.get("/my-tickets", authenticate, getMyTickets);
+
+router.get(
+  "/event/:eventId/checkins",
+  authenticate,
+  authorize("organizer", "admin"),
+  getEventCheckIns,
+);
+
+router.get("/:id", authenticate, getTicketById);
 
 export default router;

@@ -1,10 +1,11 @@
 import React from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { Calendar, Users, CreditCard, Settings } from 'lucide-react';
+import { Calendar, Tags, CreditCard, Settings } from 'lucide-react';
 import MyOrders from '../components/Dashboard/MyOrders';
 import MyEvents from '../components/Dashboard/MyEvents';
 import CreateEvent from '../components/Dashboard/CreateEvent';
+import Categories from '../components/Dashboard/Categories';
 import EditEvent from './EditEvent';
 
 const Dashboard = () => {
@@ -16,6 +17,7 @@ const Dashboard = () => {
     ...(user?.role === 'organizer' || user?.role === 'admin' ? [
       { name: 'My Events', href: '/dashboard/events', icon: Calendar, current: location.pathname === '/dashboard/events' },
       { name: 'Create Event', href: '/dashboard/create-event', icon: Calendar, current: location.pathname === '/dashboard/create-event' },
+      { name: 'Categories', href: '/dashboard/categories', icon: Tags, current: location.pathname === '/dashboard/categories' },
     ] : []),
     { name: 'Profile', href: '/dashboard/profile', icon: Settings, current: location.pathname === '/dashboard/profile' },
   ];
@@ -72,6 +74,7 @@ const Dashboard = () => {
                 <>
                   <Route path="events" element={<MyEvents />} />
                   <Route path="create-event" element={<CreateEvent />} />
+                  <Route path="categories" element={<Categories />} />
                   <Route path="edit-event/:id" element={<EditEvent />} />
                 </>
               )}

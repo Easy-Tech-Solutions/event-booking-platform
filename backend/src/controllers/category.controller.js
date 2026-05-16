@@ -1,4 +1,41 @@
 import Category from '../models/Category.model.js';
+import { validationResult } from 'express-validator';
+
+
+export const createCategory = async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { name, description, color } = req.body;
+
+    const existingCategory = await Category.findOne({ name });
+    if (existingCategory) {
+      return res.status(400).json({ message: 'Category already exists' });
+    }
+
+    const category = new Category({ name, description, color });
+    await category.save();
+
+    res.status(201).json({ message: 'Category created successfully', category });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+export const getCategories = async (req, res, next) => {
+  try {
+    const categories = await Category.find({ isActive: true }).sort({ createdAt: -1 });
+    res.json({ categories });
+  } catch (error) {
+    next(error);
+  }
+};
+
+import Category from '../models/Category.model.js';
 
 const DEFAULT_CATEGORIES = [
   { name: 'Music', color: '#2563eb' },
@@ -9,7 +46,7 @@ const DEFAULT_CATEGORIES = [
 
 const getCategories = async (req, res, next) => {
   try {
-    let categories = await Category.find({ isActive: true }).sort({ name: 1 });
+    let categories = await Category.find().sort({ name: 1 });
 
     // Auto-seed basic categories for first-time setup.
     if (categories.length === 0) {
@@ -23,4 +60,56 @@ const getCategories = async (req, res, next) => {
   }
 };
 
-export { getCategories };
+const createCategory = async (req, res, next) => {
+  try {
+    const { name, description, color } = req.body;
+
+    if (!name?.trim()) {
+      return res.status(400).json({ message: 'Category name is required' });
+    }
+
+    const existing = await Category.findOne({ name: name.trim() });
+    if (existing) {
+      return res.status(400).json({ message: 'Category already exists' });
+    }
+
+    const category = await Category.create({
+      name: name.trim(),
+      description,
+      color
+    });
+
+    res.status(201).json({
+      message: 'Category created successfully',
+      category
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateCategory = async (req, res, next) => {
+  try {
+    const category = await Category.findById(req.params.id);
+    if (!category) {
+      return res.status(404).json({ message: 'Category not found' });
+    }
+
+    const { name, description, color, isActive } = req.body;
+    if (name !== undefined) category.name = name.trim();
+    if (description !== undefined) category.description = description;
+    if (color !== undefined) category.color = color;
+    if (isActive !== undefined) category.isActive = Boolean(isActive);
+
+    await category.save();
+
+    res.json({
+      message: 'Category updated successfully',
+      category
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export { getCategories, createCategory, updateCategory };

@@ -1,3 +1,4 @@
+// env.js
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -12,6 +13,7 @@ export default {
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
   CLIENT_URL: process.env.CLIENT_URL || 'http://localhost:3000',
+  CLIENT_URLS: process.env.CLIENT_URLS || '',
   EMAIL_HOST: process.env.EMAIL_HOST,
   EMAIL_PORT: process.env.EMAIL_PORT,
   EMAIL_USER: process.env.EMAIL_USER,
