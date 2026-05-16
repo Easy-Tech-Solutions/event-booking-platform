@@ -6,7 +6,7 @@ import { Check, X } from 'lucide-react';
 import apiClient from '../api/client';
 
 interface CheckInResult {
-  success: boolean;
+  valid: boolean;
   message: string;
   attendee?: string;
 }
@@ -22,10 +22,10 @@ export function EventCheckInScanner({ onScan, eventId }: { onScan?: (code: strin
     setResult(null);
     try {
       const response = await apiClient.post('/tickets/checkin', { ticketNumber: scannedCode, eventId });
-      setResult({ success: true, message: 'Ticket checked in successfully!', attendee: response.data.attendee });
+      setResult({ valid: true, message: response.data.message || 'Ticket checked in successfully!', attendee: response.data.attendee });
       onScan?.(scannedCode);
     } catch (error: any) {
-      setResult({ success: false, message: error.response?.data?.message || 'Invalid or already used ticket' });
+      setResult({ valid: false, message: error.response?.data?.message || 'Invalid or already used ticket' });
     } finally {
       setIsLoading(false);
       setScannedCode('');
@@ -48,8 +48,8 @@ export function EventCheckInScanner({ onScan, eventId }: { onScan?: (code: strin
         {isLoading ? 'Checking in...' : 'Check In Ticket'}
       </Button>
       {result && (
-        <div className={`mt-4 p-3 rounded-lg flex items-center gap-2 ${result.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-          {result.success ? <Check className="w-5 h-5" /> : <X className="w-5 h-5" />}
+        <div className={`mt-4 p-3 rounded-lg flex items-center gap-2 ${result.valid ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+          {result.valid ? <Check className="w-5 h-5" /> : <X className="w-5 h-5" />}
           <span className="text-sm font-medium">{result.message}</span>
           {result.attendee && <Badge className="ml-auto">{result.attendee}</Badge>}
         </div>
