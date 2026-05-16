@@ -29,18 +29,13 @@ app.use(helmet());
 const normalizeOrigin = (origin = "") => origin.trim().replace(/\/$/, "");
 
 const parseOrigins = (origins = "") =>
-  origins
-    .split(",")
-    .map(normalizeOrigin)
-    .filter(Boolean);
+  origins.split(",").map(normalizeOrigin).filter(Boolean);
 
 const localOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
   "http://localhost:5174",
-  "http://localhost:8080",
-  "https://eventhub-iota.vercel.app",
-  "https://eventhub-iota-git-*-*.vercel.app",
+  "http://localhost:8080"
 ];
 
 app.use(
@@ -48,10 +43,7 @@ app.use(
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
 
-      if (
-        allowedOrigins.includes(origin) ||
-        origin.match(/eventhub-iota-git-.*\.vercel\.app/)
-      ) {
+      if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         callback(new Error(`Not allowed by CORS: ${origin}`));
