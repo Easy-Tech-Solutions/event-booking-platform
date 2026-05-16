@@ -29,10 +29,7 @@ app.use(helmet());
 const normalizeOrigin = (origin = "") => origin.trim().replace(/\/$/, "");
 
 const parseOrigins = (origins = "") =>
-  origins
-    .split(",")
-    .map(normalizeOrigin)
-    .filter(Boolean);
+  origins.split(",").map(normalizeOrigin).filter(Boolean);
 
 const localOrigins = [
   "http://localhost:3000",
