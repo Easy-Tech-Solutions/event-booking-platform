@@ -16,9 +16,9 @@ const Register = () => {
 
   const onSubmit = async (data) => {
     try {
-      await dispatch(registerUser(data)).unwrap();
-      toast.success('Registration successful!');
-      navigate('/');
+      const response = await dispatch(registerUser(data)).unwrap();
+      toast.success(response?.message || 'Registration successful. Please verify your email.');
+      navigate('/login');
     } catch (error) {
       toast.error(error || 'Registration failed');
     }
