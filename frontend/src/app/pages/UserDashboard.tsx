@@ -7,10 +7,13 @@ import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Separator } from '../components/ui/separator';
 import { Ticket, Heart, Calendar, CreditCard, Settings, Download, MapPin, User } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../store';
 import { fetchMyOrders } from '../store/slices/ordersSlice';
+import { updateUser } from '../store/slices/authSlice';
 import { TicketQRCode } from '../components/TicketQRCode';
+import { PasswordInput, PasswordStrengthMeter, validatePassword } from '../components/PasswordInput';
 import apiClient from '../api/client';
 
 export function UserDashboard() {
@@ -229,42 +232,137 @@ function PaymentHistory() {
 }
 
 function ProfileSettings() {
+  const dispatch = useAppDispatch();
   const { user } = useAppSelector((state) => state.auth);
-  const [form, setForm] = useState({ firstName: user?.firstName || '', lastName: user?.lastName || '', email: user?.email || '', phone: user?.phone || '' });
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState('');
 
-  const handleSave = async () => {
+  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '' });
+  const [profileSaved, setProfileSaved] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [profileLoading, setProfileLoading] = useState(false);
+
+  const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
+  const [pwSaved, setPwSaved] = useState(false);
+  const [pwError, setPwError] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
+
+  // Sync form whenever Redux user changes (e.g. after fetchProfile on mount)
+  useEffect(() => {
+    if (user) {
+      setForm({
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        email: user.email || '',
+        phone: user.phone || '',
+      });
+    }
+  }, [user]);
+
+  const handleProfileSave = async () => {
+    setProfileError('');
+    if (!form.firstName.trim() || !form.lastName.trim()) {
+      setProfileError('First and last name are required.');
+      return;
+    }
+    setProfileLoading(true);
     try {
-      await apiClient.put('/auth/profile', form);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+      const res = await apiClient.put('/auth/profile', {
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        phone: form.phone.trim(),
+      });
+      dispatch(updateUser(res.data.user));
+      setProfileSaved(true);
+      setTimeout(() => setProfileSaved(false), 3000);
     } catch (e: any) {
-      setError(e.response?.data?.message || 'Failed to save');
+      setProfileError(e.response?.data?.message || 'Failed to save profile.');
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  const handlePasswordChange = async () => {
+    setPwError('');
+    if (!pw.current) { setPwError('Current password is required.'); return; }
+    const err = validatePassword(pw.next);
+    if (err) { setPwError(err); return; }
+    if (pw.next !== pw.confirm) { setPwError('New passwords do not match.'); return; }
+    setPwLoading(true);
+    try {
+      await apiClient.put('/auth/change-password', { currentPassword: pw.current, newPassword: pw.next });
+      setPwSaved(true);
+      setPw({ current: '', next: '', confirm: '' });
+      setTimeout(() => setPwSaved(false), 3000);
+    } catch (e: any) {
+      setPwError(e.response?.data?.message || 'Failed to change password.');
+    } finally {
+      setPwLoading(false);
     }
   };
 
   return (
-    <Card className="p-6">
-      <h2 className="text-2xl font-bold mb-6">Profile Settings</h2>
-      <div className="space-y-4">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="w-20 h-20 bg-[#004406] rounded-full flex items-center justify-center">
-            <User className="w-10 h-10 text-white" />
+    <div className="space-y-6">
+      <Card className="p-6">
+        <h2 className="text-2xl font-bold mb-6">Profile Settings</h2>
+        <div className="space-y-4">
+          <div className="flex items-center gap-4 mb-2">
+            <div className="w-16 h-16 bg-[#004406] rounded-full flex items-center justify-center shrink-0">
+              <User className="w-8 h-8 text-white" />
+            </div>
+            <div>
+              <div className="font-semibold">{user?.firstName} {user?.lastName}</div>
+              <div className="text-sm text-muted-foreground">{user?.email}</div>
+            </div>
           </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label>First Name</Label>
+              <Input value={form.firstName} onChange={(e) => setForm((p) => ({ ...p, firstName: e.target.value }))} />
+            </div>
+            <div>
+              <Label>Last Name</Label>
+              <Input value={form.lastName} onChange={(e) => setForm((p) => ({ ...p, lastName: e.target.value }))} />
+            </div>
+            <div className="md:col-span-2">
+              <Label>Email</Label>
+              <Input type="email" value={form.email} disabled className="bg-gray-50 text-muted-foreground cursor-not-allowed" />
+              <p className="text-xs text-muted-foreground mt-1">Email cannot be changed here.</p>
+            </div>
+            <div className="md:col-span-2">
+              <Label>Phone</Label>
+              <Input type="tel" value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} placeholder="+1 (555) 123-4567" />
+            </div>
+          </div>
+          {profileError && <p className="text-sm text-destructive">{profileError}</p>}
+          {profileSaved && <p className="text-sm text-[#004406]">Profile saved successfully!</p>}
+          <Button className="bg-[#004406] hover:bg-[#003305] text-white" onClick={handleProfileSave} disabled={profileLoading}>
+            {profileLoading ? 'Saving...' : 'Save Changes'}
+          </Button>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div><Label>First Name</Label><Input value={form.firstName} onChange={(e) => setForm((p) => ({ ...p, firstName: e.target.value }))} /></div>
-          <div><Label>Last Name</Label><Input value={form.lastName} onChange={(e) => setForm((p) => ({ ...p, lastName: e.target.value }))} /></div>
-          <div className="md:col-span-2"><Label>Email</Label><Input type="email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} /></div>
-          <div className="md:col-span-2"><Label>Phone</Label><Input type="tel" value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} /></div>
+      </Card>
+
+      <Card className="p-6">
+        <h3 className="text-lg font-semibold mb-4">Change Password</h3>
+        <div className="space-y-4">
+          <div>
+            <Label>Current Password</Label>
+            <PasswordInput value={pw.current} onChange={(e) => setPw((p) => ({ ...p, current: e.target.value }))} placeholder="Enter current password" />
+          </div>
+          <div>
+            <Label>New Password</Label>
+            <PasswordInput value={pw.next} onChange={(e) => setPw((p) => ({ ...p, next: e.target.value }))} placeholder="Enter new password" />
+            <PasswordStrengthMeter password={pw.next} />
+          </div>
+          <div>
+            <Label>Confirm New Password</Label>
+            <PasswordInput value={pw.confirm} onChange={(e) => setPw((p) => ({ ...p, confirm: e.target.value }))} placeholder="Confirm new password" />
+          </div>
+          {pwError && <p className="text-sm text-destructive">{pwError}</p>}
+          {pwSaved && <p className="text-sm text-[#004406]">Password changed successfully!</p>}
+          <Button className="bg-[#004406] hover:bg-[#003305] text-white" onClick={handlePasswordChange} disabled={pwLoading}>
+            {pwLoading ? 'Updating...' : 'Update Password'}
+          </Button>
         </div>
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        {saved && <p className="text-sm text-[#004406]">Profile saved successfully!</p>}
-        <div className="pt-4">
-          <Button className="bg-[#004406] hover:bg-[#003305] text-white" onClick={handleSave}>Save Changes</Button>
-        </div>
-      </div>
-    </Card>
+      </Card>
+    </div>
   );
 }

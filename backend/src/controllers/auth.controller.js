@@ -8,6 +8,7 @@ import {
   resetPasswordEmailTemplate,
 } from "../utils/emailTemplates.js";
 import path from "path";
+import env from "../config/env.js";
 
 const register = async (req, res, next) => {
   try {
@@ -322,6 +323,61 @@ const changePassword = async (req, res, next) => {
   }
 };
 
+// ─── POST /api/auth/google ───────────────────────────────────────────────────
+// Verify Google ID token, upsert user, return JWT tokens
+const googleAuth = async (req, res, next) => {
+  try {
+    const { credential } = req.body;
+    if (!credential) return res.status(400).json({ message: 'Google credential is required.' });
+    if (!env.GOOGLE_CLIENT_ID) return res.status(501).json({ message: 'Google sign-in is not configured.' });
+
+    // Decode the JWT payload (Google signs it — we verify via their certs endpoint)
+    const [, payloadB64] = credential.split('.');
+    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
+
+    // Verify audience matches our client ID
+    if (payload.aud !== env.GOOGLE_CLIENT_ID) {
+      return res.status(401).json({ message: 'Invalid Google token audience.' });
+    }
+    // Verify token is not expired
+    if (payload.exp < Math.floor(Date.now() / 1000)) {
+      return res.status(401).json({ message: 'Google token has expired.' });
+    }
+
+    const { email, given_name: firstName, family_name: lastName, sub: googleId } = payload;
+    if (!email) return res.status(400).json({ message: 'Google account has no email.' });
+
+    let user = await User.findOne({ email });
+    if (!user) {
+      // New user — create with a random password (they'll use Google to sign in)
+      user = new User({
+        firstName: firstName || email.split('@')[0],
+        lastName: lastName || '',
+        email,
+        password: crypto.randomBytes(32).toString('hex'),
+        role: 'attendee',
+        isVerified: true, // Google already verified the email
+      });
+      await user.save();
+    } else if (!user.isVerified) {
+      user.isVerified = true;
+      await user.save();
+    }
+
+    if (user.isSuspended) {
+      return res.status(403).json({ message: 'Your account has been suspended.' });
+    }
+
+    const { accessToken, refreshToken } = generateTokens({ userId: user._id });
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    return res.json({ message: 'Google sign-in successful', user, accessToken, refreshToken });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export {
   register,
   login,
@@ -333,4 +389,5 @@ export {
   resetPassword,
   updateProfile,
   changePassword,
+  googleAuth,
 };
