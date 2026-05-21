@@ -37,17 +37,21 @@ export const loginUser = createAsyncThunk('auth/login', async (credentials: Logi
     localStorage.setItem('refreshToken', response.data.refreshToken);
     return response.data;
   } catch (error: any) {
-    return rejectWithValue(error.response?.data?.message || 'Login failed');
+    const resData = error.response?.data;
+    const message = resData?.message || resData?.errors?.[0]?.msg || 'Login failed';
+    return rejectWithValue(message);
   }
 });
 
 export const registerUser = createAsyncThunk('auth/register', async (data: RegisterPayload, { rejectWithValue }) => {
   try {
     const response = await authAPI.register(data);
-    // Registration no longer returns tokens — email verification is required first
     return response.data;
   } catch (error: any) {
-    return rejectWithValue(error.response?.data?.message || 'Registration failed');
+    const resData = error.response?.data;
+    // Backend may return { message } or { errors: [{msg},...] }
+    const message = resData?.message || resData?.errors?.[0]?.msg || 'Registration failed';
+    return rejectWithValue(message);
   }
 });
 

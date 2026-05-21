@@ -106,7 +106,9 @@ export function SignUp() {
 
           {GOOGLE_CLIENT_ID && (
             <>
-              <div id="google-signup-btn" className="w-full mb-4" />
+              <div className="flex justify-center mb-4">
+                <div id="google-signup-btn" />
+              </div>
               <div className="relative mb-4">
                 <div className="absolute inset-0 flex items-center"><div className="w-full border-t" /></div>
                 <div className="relative flex justify-center text-xs text-muted-foreground"><span className="bg-white px-2">or sign up with email</span></div>

@@ -18,8 +18,9 @@ const register = async (req, res, next) => {
     }
 
     const { firstName, lastName, email, password, role } = req.body;
+    const normalizedEmail = email.toLowerCase().trim();
 
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
       if (existingUser.isVerified) {
         return res.status(400).json({ message: "User already exists" });
@@ -55,7 +56,7 @@ const register = async (req, res, next) => {
     const user = new User({
       firstName,
       lastName,
-      email,
+      email: normalizedEmail,
       password,
       role: role || "attendee",
     });
@@ -97,7 +98,7 @@ const login = async (req, res, next) => {
 
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
     if (!user || !(await user.comparePassword(password))) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
@@ -198,7 +199,7 @@ const verifyEmail = async (req, res, next) => {
 const forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
 
     if (!existingUser) {
       return res

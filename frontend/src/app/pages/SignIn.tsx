@@ -84,7 +84,9 @@ export function SignIn() {
 
           {GOOGLE_CLIENT_ID && (
             <>
-              <div id="google-signin-btn" className="w-full mb-4" />
+              <div className="flex justify-center mb-4">
+                <div id="google-signin-btn" />
+              </div>
               {googleError && <p className="text-sm text-destructive mb-2">{googleError}</p>}
               <div className="relative mb-4">
                 <div className="absolute inset-0 flex items-center"><div className="w-full border-t" /></div>
