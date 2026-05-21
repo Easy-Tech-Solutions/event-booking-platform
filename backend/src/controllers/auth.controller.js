@@ -68,20 +68,18 @@ const register = async (req, res, next) => {
       firstName,
       verificationLink,
     );
-    try {
-      await sendEmail(user.email, subject, html);
-      return res.status(201).json({
-        message: "Registration Successful. Please check your email to verify your account",
-        user,
-      });
-    } catch (emailError) {
-      // Do NOT delete the user. Return a warning message instead.
-      return res.status(201).json({
-        message: "Account created, but we could not send a verification email. Please contact support or try resending verification.",
-        user,
-        warning: true
-      });
-    }
+
+    // Send email in the background (fire-and-forget)
+    sendEmail(user.email, subject, html).catch((emailError) => {
+      // Optionally log the error for debugging
+      console.error('Verification email failed to send:', emailError.message);
+    });
+
+    // Respond immediately
+    return res.status(201).json({
+      message: "Registration Successful. Please check your email to verify your account",
+      user,
+    });
   } catch (error) {
     next(error);
   }
