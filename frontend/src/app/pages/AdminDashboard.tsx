@@ -9,10 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { LayoutDashboard, Users, Calendar, AlertTriangle, DollarSign, FileText, Search, MoreVertical, Check, X, TrendingUp, Activity } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { EventCheckInScanner } from '../components/EventCheckInScanner';
-import { LiveAttendeeAnalytics } from '../components/LiveAttendeeAnalytics';
-import { BlastMessageSender } from '../components/BlastMessageSender';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import apiClient from '../api/client';
 
 export function AdminDashboard() {
@@ -110,9 +107,6 @@ function PlatformOverview() {
           );
         })}
       </div>
-      <div className="my-8"><EventCheckInScanner /></div>
-      <div className="my-8"><LiveAttendeeAnalytics eventId="" /></div>
-      <div className="my-8"><BlastMessageSender eventId="" /></div>
     </div>
   );
 }

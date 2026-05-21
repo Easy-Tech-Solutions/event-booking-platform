@@ -55,7 +55,9 @@ export function BookingFlow() {
     const tt = ticketTypes.find((t: any) => t._id === tid);
     return sum + (tt?.price || 0) * qty;
   }, 0);
-  const serviceFee = Math.round(subtotal * 0.05 * 100) / 100;
+  const platformFee = Math.round(subtotal * 0.03 * 100) / 100;
+  const paymentFee = Math.round((subtotal * 0.029 + 0.30) * 100) / 100;
+  const serviceFee = platformFee + paymentFee;
   const total = subtotal + serviceFee;
   const totalTickets = Object.values(selectedTickets).reduce((s, q) => s + q, 0);
 
@@ -270,7 +272,8 @@ export function BookingFlow() {
               <Separator className="my-4" />
               <div className="space-y-2">
                 <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span>${subtotal.toFixed(2)}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Service Fee (5%)</span><span>${serviceFee.toFixed(2)}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Platform Fee (3%)</span><span>${platformFee.toFixed(2)}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Payment Processing</span><span>${paymentFee.toFixed(2)}</span></div>
               </div>
               <Separator className="my-4" />
               <div className="flex justify-between font-semibold text-lg"><span>Total</span><span>${total.toFixed(2)}</span></div>

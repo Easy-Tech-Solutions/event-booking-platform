@@ -39,7 +39,9 @@ const ticketTypeSchema = new mongoose.Schema({
   },
   benefits: [String]
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true },
 });
 
 ticketTypeSchema.virtual('available').get(function() {
@@ -48,7 +50,7 @@ ticketTypeSchema.virtual('available').get(function() {
 
 ticketTypeSchema.virtual('isAvailable').get(function() {
   const now = new Date();
-  const saleActive = (!this.saleStartDate || now >= this.saleStartDate) && 
+  const saleActive = (!this.saleStartDate || now >= this.saleStartDate) &&
                     (!this.saleEndDate || now <= this.saleEndDate);
   return this.isActive && this.available > 0 && saleActive;
 });

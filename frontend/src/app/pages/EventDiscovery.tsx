@@ -13,17 +13,18 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../c
 import { Search, SlidersHorizontal, X } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../store';
 import { fetchEvents } from '../store/slices/eventsSlice';
+import apiClient from '../api/client';
 
-const categories = [
-  { id: 'music', name: 'Music', icon: '🎵' },
-  { id: 'technology', name: 'Technology', icon: '💻' },
-  { id: 'food', name: 'Food & Drink', icon: '🍷' },
-  { id: 'sports', name: 'Sports', icon: '⚽' },
-  { id: 'arts', name: 'Arts & Culture', icon: '🎨' },
-  { id: 'business', name: 'Business', icon: '💼' },
-  { id: 'education', name: 'Education', icon: '📚' },
-  { id: 'theater', name: 'Theater', icon: '🎭' },
-  { id: 'comedy', name: 'Comedy', icon: '😄' },
+const fallbackCategories = [
+  { _id: 'music', name: 'Music', icon: '🎵' },
+  { _id: 'technology', name: 'Technology', icon: '💻' },
+  { _id: 'food', name: 'Food & Drink', icon: '🍷' },
+  { _id: 'sports', name: 'Sports', icon: '⚽' },
+  { _id: 'arts', name: 'Arts & Culture', icon: '🎨' },
+  { _id: 'business', name: 'Business', icon: '💼' },
+  { _id: 'education', name: 'Education', icon: '📚' },
+  { _id: 'theater', name: 'Theater', icon: '🎭' },
+  { _id: 'comedy', name: 'Comedy', icon: '😄' },
 ];
 
 export function EventDiscovery() {
@@ -32,11 +33,28 @@ export function EventDiscovery() {
   const { events, isLoading, pagination } = useAppSelector((state) => state.events);
 
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
-  const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || '');
+  const [selectedCategory, setSelectedCategory] = useState('');
   const [priceRange, setPriceRange] = useState([0, 1000]);
   const [showFreeOnly, setShowFreeOnly] = useState(false);
   const [sortBy, setSortBy] = useState('date');
   const [page, setPage] = useState(1);
+  const [categories, setCategories] = useState(fallbackCategories);
+
+  // Sync search query from URL params (e.g. when navigating from LandingPage)
+  useEffect(() => {
+    const q = searchParams.get('q') || '';
+    setSearchQuery(q);
+    setPage(1);
+  }, [searchParams]);
+
+  useEffect(() => {
+    apiClient.get('/categories')
+      .then((res) => {
+        const apiCats = res.data.categories || [];
+        if (apiCats.length > 0) setCategories(apiCats.map((c: any) => ({ _id: c._id, name: c.name, icon: '' })));
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const params: any = { status: 'published', page, limit: 12 };
@@ -73,14 +91,14 @@ export function EventDiscovery() {
         <Label className="text-base mb-3 block">Categories</Label>
         <div className="space-y-2">
           {categories.map((category) => (
-            <div key={category.id} className="flex items-center">
+            <div key={category._id} className="flex items-center">
               <Checkbox
-                id={category.id}
-                checked={selectedCategory === category.id}
-                onCheckedChange={() => { setSelectedCategory(selectedCategory === category.id ? '' : category.id); setPage(1); }}
+                id={category._id}
+                checked={selectedCategory === category._id}
+                onCheckedChange={() => { setSelectedCategory(selectedCategory === category._id ? '' : category._id); setPage(1); }}
               />
-              <label htmlFor={category.id} className="ml-2 text-sm cursor-pointer flex items-center gap-2">
-                <span>{category.icon}</span>{category.name}
+              <label htmlFor={category._id} className="ml-2 text-sm cursor-pointer flex items-center gap-2">
+                {category.icon && <span>{category.icon}</span>}{category.name}
               </label>
             </div>
           ))}

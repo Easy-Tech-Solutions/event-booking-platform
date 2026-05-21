@@ -64,7 +64,7 @@ export function LandingPage() {
             </div>
             <div className="mt-8 flex flex-wrap justify-center gap-2">
               {categories.map((category) => (
-                <Button key={category.id} variant="outline" className="bg-white/10 border-white/30 text-white hover:bg-white/20" onClick={() => navigate(`/discover?category=${category.id}`)}>
+                <Button key={category.id} variant="outline" className="bg-white/10 border-white/30 text-white hover:bg-white/20" onClick={() => navigate(`/discover?q=${encodeURIComponent(category.name)}`)}>
                   <span className="mr-2">{category.icon}</span>{category.name}
                 </Button>
               ))}
@@ -104,7 +104,7 @@ export function LandingPage() {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             {categories.map((category) => (
-              <Card key={category.id} className="p-6 hover:shadow-lg transition-all cursor-pointer group hover:border-[#004406]/40" onClick={() => navigate(`/discover?category=${category.id}`)}>
+              <Card key={category.id} className="p-6 hover:shadow-lg transition-all cursor-pointer group hover:border-[#004406]/40" onClick={() => navigate(`/discover?q=${encodeURIComponent(category.name)}`)}>
                 <div className="text-center">
                   <div className="text-4xl mb-3">{category.icon}</div>
                   <h3 className="font-semibold group-hover:text-[#004406] transition-colors">{category.name}</h3>

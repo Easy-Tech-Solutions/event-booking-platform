@@ -186,7 +186,8 @@ function CreateEventForm() {
       capacity: parseInt(form.capacity), startDate: form.startDate, endDate: form.endDate,
       location: { venue: form.venue, city: form.city, state: form.state, country: form.country },
       isOnline: form.isOnline, onlineLink: form.onlineLink,
-    }));
+      status,
+    } as any));
     if (createEvent.fulfilled.match(result)) {
       setSuccess(true);
       setTimeout(() => navigate('/organizer/events'), 1500);

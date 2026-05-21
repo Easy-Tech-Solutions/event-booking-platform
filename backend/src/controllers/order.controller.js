@@ -225,20 +225,22 @@ const confirmOrder = async (req, res, next) => {
 const getMyOrders = async (req, res, next) => {
   try {
     const { page = 1, limit = 10 } = req.query;
+    const parsedPage = parseInt(page, 10) || 1;
+    const parsedLimit = Math.min(parseInt(limit, 10) || 10, 50);
 
     const orders = await Order.find({ user: req.user._id })
       .populate("event", "title startDate location")
       .populate("items.ticketType", "name price")
       .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+      .limit(parsedLimit)
+      .skip((parsedPage - 1) * parsedLimit);
 
     const total = await Order.countDocuments({ user: req.user._id });
 
     res.json({
       orders,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
+      totalPages: Math.ceil(total / parsedLimit),
+      currentPage: parsedPage,
       total,
     });
   } catch (error) {
@@ -310,7 +312,7 @@ const cancelOrder = async (req, res, next) => {
     // Release inventory back to ticket types
     for (const item of order.items) {
       await TicketType.findByIdAndUpdate(item.ticketType, {
-        $inc: { available: item.quantity },
+        $inc: { sold: -item.quantity },
       });
     }
 

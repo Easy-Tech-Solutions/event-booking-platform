@@ -1,12 +1,10 @@
-import transporter from "../config/email.js";
+import sgMail from "../config/email.js";
 import env from "../config/env.js";
-const { EMAIL_USER } = env;
-
 
 const sendEmail = async (to, subject, html) => {
   try {
-    await transporter.sendMail({
-      from: `Event Hub <${EMAIL_USER}>`,
+    await sgMail.send({
+      from: `Event Hub <${env.EMAIL_FROM}>`,
       to,
       subject,
       html,

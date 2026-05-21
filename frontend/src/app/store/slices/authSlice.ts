@@ -17,6 +17,7 @@ interface AuthState {
   accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isInitializing: boolean;
   error: string | null;
 }
 
@@ -25,6 +26,7 @@ const initialState: AuthState = {
   accessToken: localStorage.getItem('accessToken'),
   isAuthenticated: !!localStorage.getItem('accessToken'),
   isLoading: false,
+  isInitializing: !!localStorage.getItem('accessToken'),
   error: null,
 };
 
@@ -78,6 +80,7 @@ const authSlice = createSlice({
       state.user = null;
       state.accessToken = null;
       state.isAuthenticated = false;
+      state.isInitializing = false;
     },
   },
   extraReducers: (builder) => {
@@ -107,15 +110,18 @@ const authSlice = createSlice({
         state.user = null;
         state.accessToken = null;
         state.isAuthenticated = false;
+        state.isInitializing = false;
       })
       .addCase(fetchProfile.fulfilled, (state, action) => {
         state.user = action.payload;
         state.isAuthenticated = true;
+        state.isInitializing = false;
       })
       .addCase(fetchProfile.rejected, (state) => {
         state.user = null;
         state.accessToken = null;
         state.isAuthenticated = false;
+        state.isInitializing = false;
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
       });

@@ -32,7 +32,6 @@ const createTicketType = async (req, res, next) => {
       description,
       price,
       quantity,
-      available: quantity, // available starts equal to quantity
       maxPerOrder,
       saleStartDate,
       saleEndDate,
@@ -122,18 +121,8 @@ const checkAndUpdateEventCapacity = async (eventId) => {
       isActive: true,
     });
 
-    for (const tt of ticketTypes) {
-      if (tt.available <= 0 && tt.isAvailable) {
-        tt.isAvailable = false;
-        await tt.save();
-      } else if (tt.available > 0 && !tt.isAvailable) {
-        tt.isAvailable = true;
-        await tt.save();
-      }
-    }
-
     // Check if ALL active ticket types are sold out
-    const allSoldOut = ticketTypes.every((tt) => tt.available <= 0);
+    const allSoldOut = ticketTypes.length > 0 && ticketTypes.every((tt) => tt.quantity - tt.sold <= 0);
     if (allSoldOut) {
       await Event.findByIdAndUpdate(eventId, { status: "completed" });
     }
