@@ -17,6 +17,7 @@ export default {
   BASE_URL: process.env.BASE_URL || 'http://localhost:5000',
   SENDGRID_API_KEY: process.env.SENDGRID_API_KEY,
   EMAIL_FROM: process.env.EMAIL_FROM,
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET
