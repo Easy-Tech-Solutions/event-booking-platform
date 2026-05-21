@@ -70,19 +70,18 @@ const register = async (req, res, next) => {
     );
     try {
       await sendEmail(user.email, subject, html);
+      return res.status(201).json({
+        message: "Registration Successful. Please check your email to verify your account",
+        user,
+      });
     } catch (emailError) {
-      await User.findByIdAndDelete(user._id);
-      return res.status(503).json({
-        message:
-          "Unable to send verification email right now. Please try again in a few minutes.",
+      // Do NOT delete the user. Return a warning message instead.
+      return res.status(201).json({
+        message: "Account created, but we could not send a verification email. Please contact support or try resending verification.",
+        user,
+        warning: true
       });
     }
-
-    res.status(201).json({
-      message:
-        "Registration Successful. Please check your email to verify your account",
-      user,
-    });
   } catch (error) {
     next(error);
   }
