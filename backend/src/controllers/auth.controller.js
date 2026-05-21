@@ -28,11 +28,13 @@ const register = async (req, res, next) => {
       existingUser.verificationExpires = Date.now() + 24 * 60 * 60 * 1000;
       await existingUser.save();
 
-      const verificationLink = `${process.env.BASE_URL || "http://localhost:5000"}/api/auth/verify-email/${existingUser.verificationToken}`;
+      const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+      const verificationLink = `${clientUrl}/verify-email/${existingUser.verificationToken}`;
       const { subject, html } = verificationEmailTemplate(
         existingUser.firstName,
         verificationLink,
       );
+
 
       try {
         await sendEmail(existingUser.email, subject, html);
@@ -63,7 +65,8 @@ const register = async (req, res, next) => {
 
     await user.save();
 
-    const verificationLink = `${process.env.BASE_URL || "http://localhost:5000"}/api/auth/verify-email/${verificationToken}`;
+    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+    const verificationLink = `${clientUrl}/verify-email/${verificationToken}`;
     const { subject, html } = verificationEmailTemplate(
       firstName,
       verificationLink,
@@ -71,7 +74,6 @@ const register = async (req, res, next) => {
 
     // Send email in the background (fire-and-forget)
     sendEmail(user.email, subject, html).catch((emailError) => {
-      // Optionally log the error for debugging
       console.error('Verification email failed to send:', emailError.message);
     });
 
@@ -102,6 +104,12 @@ const login = async (req, res, next) => {
     if (!user.isVerified) {
       return res.status(403).json({
         message: "Please verify your email before logging in.",
+      });
+    }
+
+    if (user.isSuspended) {
+      return res.status(403).json({
+        message: "Your account has been suspended. Please contact support.",
       });
     }
 
@@ -202,12 +210,18 @@ const forgotPassword = async (req, res, next) => {
     existingUser.resetPasswordExpires = Date.now() + 1 * 60 * 60 * 1000;
     await existingUser.save();
 
-    const resetPasswordLink = `${process.env.BASE_URL || "http://localhost:5000"}/api/auth/reset-password/${resetToken}`;
+    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+    const resetPasswordLink = `${clientUrl}/reset-password/${resetToken}`;
     const { subject, html } = resetPasswordEmailTemplate(
       existingUser.firstName,
       resetPasswordLink,
     );
-    await sendEmail(existingUser.email, subject, html);
+
+    try {
+      await sendEmail(existingUser.email, subject, html);
+    } catch (emailError) {
+      return res.status(503).json({ message: 'Unable to send reset email. Please try again.' });
+    }
 
     res.status(200).json({ message: "Password reset email sent" });
   } catch (error) {

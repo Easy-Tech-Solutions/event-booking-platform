@@ -51,7 +51,7 @@ export function SignIn() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <Label htmlFor="password">Password</Label>
-                <Link to="/help" className="text-xs text-primary hover:underline">Forgot password?</Link>
+                <Link to="/forgot-password" className="text-xs text-primary hover:underline">Forgot password?</Link>
               </div>
               <Input id="password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required />
             </div>

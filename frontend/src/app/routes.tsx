@@ -13,6 +13,7 @@ import { NotFound } from './pages/NotFound';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { VerifyEmail } from './pages/VerifyEmail';
 import { ResetPassword } from './pages/ResetPassword';
+import { ForgotPassword } from './pages/ForgotPassword';
 
 export const router = createBrowserRouter([
   { path: '/', Component: LandingPage },
@@ -23,6 +24,7 @@ export const router = createBrowserRouter([
   { path: '/signup', Component: SignUp },
   { path: '/verify-email/:token', Component: VerifyEmail },
   { path: '/reset-password/:token', Component: ResetPassword },
+  { path: '/forgot-password', Component: ForgotPassword },
   {
     path: '/book/:id',
     element: <ProtectedRoute><BookingFlow /></ProtectedRoute>,
