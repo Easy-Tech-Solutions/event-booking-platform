@@ -20,7 +20,33 @@ const register = async (req, res, next) => {
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(400).json({ message: "User already exists" });
+      if (existingUser.isVerified) {
+        return res.status(400).json({ message: "User already exists" });
+      }
+
+      existingUser.verificationToken = crypto.randomBytes(32).toString("hex");
+      existingUser.verificationExpires = Date.now() + 24 * 60 * 60 * 1000;
+      await existingUser.save();
+
+      const verificationLink = `${process.env.BASE_URL || "http://localhost:5000"}/api/auth/verify-email/${existingUser.verificationToken}`;
+      const { subject, html } = verificationEmailTemplate(
+        existingUser.firstName,
+        verificationLink,
+      );
+
+      try {
+        await sendEmail(existingUser.email, subject, html);
+      } catch (emailError) {
+        return res.status(503).json({
+          message:
+            "Unable to send verification email right now. Please try again in a few minutes.",
+        });
+      }
+
+      return res.status(200).json({
+        message:
+          "This account already exists but is not verified. We sent a new verification email.",
+      });
     }
 
     const user = new User({
