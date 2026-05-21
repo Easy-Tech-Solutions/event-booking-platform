@@ -99,6 +99,9 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// Root — answers Render's uptime pings cleanly
+app.get("/", (req, res) => res.redirect("/api/health"));
+
 // API routes
 app.use("/api/auth", authRoutes);
 app.use("/api/events", eventRoutes);

@@ -1,7 +1,11 @@
 import logger from '../utils/logger.js';
 
 const errorHandler = (err, req, res, next) => {
-  logger.error(err.stack);
+  if (err.isNotFound) {
+    logger.warn(`404 Not Found - ${req.method} ${req.originalUrl}`);
+  } else {
+    logger.error(err.stack);
+  }
 
   // Mongoose validation error
   if (err.name === 'ValidationError') {
@@ -38,6 +42,7 @@ const errorHandler = (err, req, res, next) => {
 const notFound = (req, res, next) => {
   const error = new Error(`Not Found - ${req.originalUrl}`);
   error.statusCode = 404;
+  error.isNotFound = true;
   next(error);
 };
 
