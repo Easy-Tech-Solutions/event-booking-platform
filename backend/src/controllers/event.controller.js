@@ -21,10 +21,12 @@ const createEvent = async (req, res, next) => {
       imagePath = uploaded.secure_url;
     }
 
+    // If a file was uploaded use it; otherwise keep whatever images[] was sent in the body
+    // (e.g. a cover image URL chosen in the multi-step wizard)
     const eventData = {
       ...req.body,
       organizer: req.user._id,
-      images: imagePath ? [imagePath] : [],
+      ...(imagePath ? { images: [imagePath] } : {}),
     };
 
     const event = new Event(eventData);
@@ -109,8 +111,23 @@ const getEvents = async (req, res, next) => {
       Event.countDocuments(query),
     ]);
 
+    // Attach minPrice from ticket types so event cards can show correct pricing
+    const eventIds = events.map((e) => e._id);
+    const priceAgg = await TicketType.aggregate([
+      { $match: { event: { $in: eventIds }, isActive: true } },
+      { $group: { _id: "$event", minPrice: { $min: "$price" } } },
+    ]);
+    const priceMap = {};
+    priceAgg.forEach((p) => { priceMap[p._id.toString()] = p.minPrice; });
+    const eventsWithPrices = events.map((e) => {
+      const obj = e.toObject();
+      const mp = priceMap[e._id.toString()];
+      obj.minPrice = mp !== undefined ? mp : null; // null = no ticket types yet
+      return obj;
+    });
+
     res.json({
-      events,
+      events: eventsWithPrices,
       pagination: {
         total,
         totalPages: Math.ceil(total / parsedLimit),

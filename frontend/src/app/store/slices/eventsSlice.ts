@@ -35,6 +35,10 @@ export const fetchEventById = createAsyncThunk('events/fetchEventById', async (i
     const response = await eventsAPI.getEventById(id);
     return response.data;
   } catch (error: any) {
+    // No response at all = network timeout / server cold-start / CORS
+    if (!error.response) {
+      return rejectWithValue('Server is unreachable. It may be waking up — please wait a moment and try again.');
+    }
     return rejectWithValue(error.response?.data?.message || 'Failed to fetch event');
   }
 });
