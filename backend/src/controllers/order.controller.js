@@ -2,11 +2,13 @@ import Order from "../models/Order.model.js";
 import TicketType from "../models/TicketType.model.js";
 import Ticket from "../models/Ticket.model.js";
 import Payment from "../models/Payment.model.js";
+import Event from "../models/Event.model.js";
 import stripe from "../config/stripe.js";
 import { generateQRCode, generateTicketQRData } from "../utils/qrcode.js";
 import { validationResult } from "express-validator";
 import { sendEmail } from "../utils/sendEmail.js";
 import { orderConfirmationEmailTemplate } from "../utils/emailTemplates.js";
+import { notify } from "../utils/notify.js";
 
 const createOrder = async (req, res, next) => {
   try {
@@ -125,31 +127,24 @@ const confirmOrder = async (req, res, next) => {
       });
     }
 
+    // The frontend already confirmed the payment via stripe.confirmCardPayment().
+    // Retrieve the PaymentIntent to verify its status — never confirm again.
     let paymentIntent;
     try {
-      paymentIntent = await stripe.paymentIntents.confirm(
-        order.paymentIntentId,
-        {
-          payment_method: paymentMethodId,
-          return_url: "https://example.com/order-complete",
-        },
-      );
+      paymentIntent = await stripe.paymentIntents.retrieve(order.paymentIntentId);
     } catch (stripeErr) {
-      if (stripeErr.type === "StripeCardError") {
-        return res.status(402).json({
-          message: "Payment failed.",
-          declineCode: stripeErr.decline_code,
-          stripeMessage: stripeErr.message,
-        });
-      }
-      if (stripeErr.type === "StripeInvalidRequestError") {
-        return res.status(400).json({ message: stripeErr.message });
-      }
       throw stripeErr;
     }
 
     if (paymentIntent.status !== "succeeded") {
-      return res.status(400).json({ message: "Payment not completed" });
+      return res.status(400).json({
+        message: `Payment not completed. Status: ${paymentIntent.status}`,
+      });
+    }
+
+    // Verify the payment method matches what was passed (sanity check)
+    if (paymentMethodId && paymentIntent.payment_method !== paymentMethodId) {
+      return res.status(400).json({ message: "Payment method mismatch." });
     }
 
     order.status = "completed";
@@ -166,10 +161,14 @@ const confirmOrder = async (req, res, next) => {
     await payment.save();
 
     const tickets = [];
+    let totalTicketsSold = 0;
+    let grossRevenue = 0;
     for (const item of order.items) {
       await TicketType.findByIdAndUpdate(item.ticketType._id, {
         $inc: { sold: item.quantity },
       });
+      totalTicketsSold += item.quantity;
+      grossRevenue += (item.price || 0) * item.quantity;
 
       for (let i = 0; i < item.quantity; i++) {
         const ticket = new Ticket({
@@ -190,7 +189,12 @@ const confirmOrder = async (req, res, next) => {
       }
     }
 
-    // ── Send order confirmation email ────────────────────────────────────────
+    // ── Update Event soldTickets + totalSales ───────────────────────────────
+    await Event.findByIdAndUpdate(order.event._id || order.event, {
+      $inc: { soldTickets: totalTicketsSold, totalSales: grossRevenue },
+    });
+
+    // ── Send order confirmation email + in-app notification ─────────────────
     try {
       const { subject, html } = orderConfirmationEmailTemplate({
         firstName: order.user.firstName,
@@ -202,10 +206,16 @@ const confirmOrder = async (req, res, next) => {
         totalAmount: order.totalAmount,
         ticketCount: tickets.length,
       });
-      await sendEmail(order.user.email, subject, html);
+      await notify({
+        userId: order.user._id || order.user,
+        type: 'order_confirmed',
+        title: 'Booking confirmed!',
+        message: `Your ${tickets.length} ticket(s) for "${order.event.title}" are confirmed. Order #${order.orderNumber}.`,
+        link: '/user/tickets',
+        email: { to: order.user.email, subject, html },
+      });
     } catch (emailErr) {
-      // Don't fail the order if email fails — just log it
-      console.error("Order confirmation email failed:", emailErr.message);
+      console.error('Order confirmation notification failed:', emailErr.message);
     }
 
     res.json({
@@ -328,4 +338,59 @@ const cancelOrder = async (req, res, next) => {
   }
 };
 
-export { createOrder, confirmOrder, getMyOrders, getOrderById, cancelOrder };
+// ─── POST /api/orders/:id/refund ────────────────────────────────────────────
+// Attendee requests a refund on a completed order
+const requestRefund = async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+    if (!reason?.trim()) {
+      return res.status(400).json({ message: 'A reason is required to request a refund.' });
+    }
+
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Order not found.' });
+    if (order.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized.' });
+    }
+    if (order.status !== 'completed') {
+      return res.status(400).json({ message: 'Only completed orders can be refunded.' });
+    }
+    if (order.refundStatus && order.refundStatus !== 'none') {
+      return res.status(400).json({ message: `Refund already ${order.refundStatus}.` });
+    }
+
+    // Issue Stripe refund
+    let refundRecord = null;
+    if (order.paymentIntentId) {
+      try {
+        refundRecord = await stripe.refunds.create({
+          payment_intent: order.paymentIntentId,
+          reason: 'requested_by_customer',
+          metadata: { orderId: order._id.toString(), reason: reason.trim() },
+        });
+      } catch (stripeErr) {
+        return res.status(402).json({ message: 'Refund failed: ' + stripeErr.message });
+      }
+    }
+
+    order.status = 'refunded';
+    order.refundStatus = 'approved';
+    order.refundReason = reason.trim();
+    await order.save();
+
+    // Restore inventory
+    for (const item of order.items) {
+      await TicketType.findByIdAndUpdate(item.ticketType, { $inc: { sold: -item.quantity } });
+    }
+
+    res.json({
+      message: 'Refund processed successfully.',
+      orderId: order._id,
+      refundId: refundRecord?.id,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export { createOrder, confirmOrder, getMyOrders, getOrderById, cancelOrder, requestRefund };

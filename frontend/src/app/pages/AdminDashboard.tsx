@@ -134,6 +134,11 @@ function UserManagement() {
     setUsers((prev) => prev.map((u) => u._id === userId ? { ...u, isSuspended: true } : u));
   };
 
+  const handleUnsuspend = async (userId: string) => {
+    await apiClient.patch(`/admin/users/${userId}/unsuspend`).catch(() => null);
+    setUsers((prev) => prev.map((u) => u._id === userId ? { ...u, isSuspended: false } : u));
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -174,7 +179,11 @@ function UserManagement() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => handleRoleChange(user._id, 'organizer')}>Make Organizer</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleRoleChange(user._id, 'attendee')}>Make Attendee</DropdownMenuItem>
-                        <DropdownMenuItem className="text-orange-600" onClick={() => handleSuspend(user._id)}>Suspend</DropdownMenuItem>
+                        {user.isSuspended ? (
+                          <DropdownMenuItem className="text-green-600" onClick={() => handleUnsuspend(user._id)}>Unsuspend</DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem className="text-orange-600" onClick={() => handleSuspend(user._id)}>Suspend</DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>

@@ -10,6 +10,8 @@ export interface AuthUser {
   avatar?: string;
   phone?: string;
   isVerified: boolean;
+  organizerStatus?: 'none' | 'pending' | 'approved' | 'rejected';
+  isSuspended?: boolean;
 }
 
 interface AuthState {

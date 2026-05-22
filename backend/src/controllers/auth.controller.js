@@ -201,10 +201,9 @@ const forgotPassword = async (req, res, next) => {
     const { email } = req.body;
     const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
 
+    // Always return 200 — never reveal whether the email is registered
     if (!existingUser) {
-      return res
-        .status(404)
-        .json({ message: "No account with that email exists." });
+      return res.status(200).json({ message: "Password reset email sent" });
     }
 
     const resetToken = crypto.randomBytes(32).toString("hex");
@@ -299,10 +298,10 @@ const changePassword = async (req, res, next) => {
         .json({ message: "currentPassword and newPassword are required." });
     }
 
-    if (newPassword.length < 6) {
+    if (newPassword.length < 8) {
       return res
         .status(400)
-        .json({ message: "New password must be at least 6 characters." });
+        .json({ message: "New password must be at least 8 characters." });
     }
 
     const user = await User.findById(req.user._id);

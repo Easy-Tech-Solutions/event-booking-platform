@@ -18,6 +18,8 @@ import webhookRoutes from "./routes/webhook.routes.js";
 import categoryRoutes from "./routes/category.routes.js";
 import ticketRoutes from "./routes/ticket.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
+import notificationRoutes from "./routes/notification.routes.js";
+import supportRoutes from "./routes/support.routes.js";
 
 // const { CLIENT_URL } = env;
 
@@ -70,13 +72,25 @@ app.use(
   }),
 );
 // ====================================================
-// Rate limiting
+// Rate limiting — strict on auth, relaxed globally
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 100,
   message: "Too many requests from this IP, please try again later.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: "Too many auth attempts, please try again later.",
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 app.use("/api/", limiter);
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/register", authLimiter);
+app.use("/api/auth/forgot-password", authLimiter);
 
 // Compression
 app.use(compression());
@@ -110,6 +124,8 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/support", supportRoutes);
 
 // Error handling
 app.use(notFound);
