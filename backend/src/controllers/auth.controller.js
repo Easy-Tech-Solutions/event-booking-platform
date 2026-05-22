@@ -331,9 +331,10 @@ const googleAuth = async (req, res, next) => {
     if (!credential) return res.status(400).json({ message: 'Google credential is required.' });
     if (!env.GOOGLE_CLIENT_ID) return res.status(501).json({ message: 'Google sign-in is not configured.' });
 
-    // Decode the JWT payload (Google signs it — we verify via their certs endpoint)
+    // Decode the JWT payload — pad to valid base64 then decode
     const [, payloadB64] = credential.split('.');
-    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
+    const padded = payloadB64.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(payloadB64.length / 4) * 4, '=');
+    const payload = JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
 
     // Verify audience matches our client ID
     if (payload.aud !== env.GOOGLE_CLIENT_ID) {
