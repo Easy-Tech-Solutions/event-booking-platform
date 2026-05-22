@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
@@ -25,25 +25,7 @@ export function SignIn() {
 
   const from = (location.state as any)?.from?.pathname || '/user/tickets';
 
-  useEffect(() => {
-    if (!GOOGLE_CLIENT_ID) return;
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      (window as any).google?.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: handleGoogleCredential,
-      });
-      (window as any).google?.accounts.id.renderButton(
-        document.getElementById('google-signin-btn'),
-        { theme: 'outline', size: 'large', width: '100%', text: 'signin_with' }
-      );
-    };
-    document.body.appendChild(script);
-    return () => { document.body.removeChild(script); };
-  }, []);
+  const callbackRef = useRef<(response: any) => void>();
 
   const handleGoogleCredential = async (response: any) => {
     setGoogleError('');
@@ -59,10 +41,33 @@ export function SignIn() {
       localStorage.setItem('refreshToken', data.refreshToken);
       await dispatch(fetchProfile());
       navigate(from, { replace: true });
-    } catch {
-      setGoogleError('Google sign-in failed. Please try again.');
+    } catch (err: any) {
+      setGoogleError(err?.message || 'Google sign-in failed. Please try again.');
     }
   };
+
+  // Keep ref in sync so the Google callback always calls the latest version
+  useEffect(() => { callbackRef.current = handleGoogleCredential; });
+
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID) return;
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      (window as any).google?.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: (response: any) => callbackRef.current?.(response),
+      });
+      (window as any).google?.accounts.id.renderButton(
+        document.getElementById('google-signin-btn'),
+        { theme: 'outline', size: 'large', text: 'signin_with' }
+      );
+    };
+    document.body.appendChild(script);
+    return () => { document.body.removeChild(script); };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

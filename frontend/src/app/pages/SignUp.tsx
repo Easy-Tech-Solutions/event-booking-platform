@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
@@ -25,26 +25,7 @@ export function SignUp() {
     setForm((prev) => ({ ...prev, [e.target.id]: e.target.value }));
   };
 
-  // Google One Tap / button init
-  useEffect(() => {
-    if (!GOOGLE_CLIENT_ID) return;
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      (window as any).google?.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: handleGoogleCredential,
-      });
-      (window as any).google?.accounts.id.renderButton(
-        document.getElementById('google-signup-btn'),
-        { theme: 'outline', size: 'large', width: '100%', text: 'signup_with' }
-      );
-    };
-    document.body.appendChild(script);
-    return () => { document.body.removeChild(script); };
-  }, []);
+  const callbackRef = useRef<(response: any) => void>();
 
   const handleGoogleCredential = async (response: any) => {
     try {
@@ -58,10 +39,33 @@ export function SignUp() {
       localStorage.setItem('accessToken', data.accessToken);
       localStorage.setItem('refreshToken', data.refreshToken);
       window.location.href = '/user/tickets';
-    } catch {
-      setLocalError('Google sign-in failed. Please try again.');
+    } catch (err: any) {
+      setLocalError(err?.message || 'Google sign-in failed. Please try again.');
     }
   };
+
+  useEffect(() => { callbackRef.current = handleGoogleCredential; });
+
+  // Google One Tap / button init
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID) return;
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      (window as any).google?.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: (response: any) => callbackRef.current?.(response),
+      });
+      (window as any).google?.accounts.id.renderButton(
+        document.getElementById('google-signup-btn'),
+        { theme: 'outline', size: 'large', text: 'signup_with' }
+      );
+    };
+    document.body.appendChild(script);
+    return () => { document.body.removeChild(script); };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
