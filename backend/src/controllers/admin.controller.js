@@ -3,6 +3,7 @@ import Event from "../models/Event.model.js";
 import Order from "../models/Order.model.js";
 import Ticket from "../models/Ticket.model.js";
 import TicketType from "../models/TicketType.model.js";
+import { notify } from "../utils/notify.js";
 
 // ─── GET /api/admin/users ─────────────────────────────────────────────────────
 const getAllUsers = async (req, res, next) => {
@@ -220,6 +221,19 @@ const approveOrganizer = async (req, res, next) => {
     user.organizerStatus = "approved";
     await user.save();
 
+    await notify({
+      userId: user._id,
+      type: 'organizer_approved',
+      title: 'Organizer request approved!',
+      message: 'Congratulations! Your organizer request has been approved. You can now create events.',
+      link: '/organizer',
+      email: {
+        to: user.email,
+        subject: 'Your EventHub organizer request was approved',
+        html: `<p>Hi ${user.firstName},</p><p>Great news! Your organizer request has been approved. You can now create and manage events on EventHub.</p><p><a href="${process.env.CLIENT_URL}/organizer">Go to Organizer Dashboard</a></p><p>Thanks,<br/>The EventHub Team</p>`,
+      },
+    });
+
     return res.json({
       message: `${user.firstName} ${user.lastName} has been approved as an organizer.`,
       userId: user._id,
@@ -243,6 +257,19 @@ const rejectOrganizer = async (req, res, next) => {
 
     user.organizerStatus = "rejected";
     await user.save();
+
+    await notify({
+      userId: user._id,
+      type: 'organizer_rejected',
+      title: 'Organizer request not approved',
+      message: 'Your organizer request was not approved at this time. Contact support for more information.',
+      link: '/help',
+      email: {
+        to: user.email,
+        subject: 'Update on your EventHub organizer request',
+        html: `<p>Hi ${user.firstName},</p><p>Unfortunately, your organizer request was not approved at this time.</p><p>If you have questions, please <a href="${process.env.CLIENT_URL}/help">contact support</a>.</p><p>Thanks,<br/>The EventHub Team</p>`,
+      },
+    });
 
     return res.json({
       message: `${user.firstName} ${user.lastName}'s organizer request has been rejected.`,

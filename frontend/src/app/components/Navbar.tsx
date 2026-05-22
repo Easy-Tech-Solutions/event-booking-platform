@@ -5,6 +5,7 @@ import { Search, Menu, MapPin, Ticket, LogIn, LogOut, User } from 'lucide-react'
 import { Sheet, SheetContent, SheetTrigger } from './ui/sheet';
 import { useAppDispatch, useAppSelector } from '../store';
 import { logoutUser } from '../store/slices/authSlice';
+import { NotificationBell } from './NotificationBell';
 
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -79,6 +80,7 @@ export function Navbar() {
             ))}
             {isAuthenticated ? (
               <div className="flex items-center gap-2 ml-1">
+                <NotificationBell />
                 <Link to="/user/profile" className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg hover:bg-[#004406]/10 hover:text-[#004406] transition-colors">
                   <User className="w-4 h-4" />
                   {user?.firstName}

@@ -6,6 +6,7 @@ import {
   getMyOrders,
   getOrderById,
   cancelOrder,
+  requestRefund,
 } from "../controllers/order.controller.js";
 import {
   orderValidation,
@@ -20,5 +21,6 @@ router.get("/:id", authenticate, mongoIdValidation, getOrderById);
 router.post("/", authenticate, orderValidation, createOrder);
 router.post("/confirm", authenticate, confirmOrder);
 router.patch("/:id/cancel", authenticate, mongoIdValidation, cancelOrder);
+router.post("/:id/refund", authenticate, mongoIdValidation, requestRefund);
 
 export default router;

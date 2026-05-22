@@ -51,6 +51,8 @@ const orderSchema = new mongoose.Schema({
   },
   paymentIntentId: String,
   paymentMethod: String,
+  refundStatus: { type: String, enum: ['none', 'pending', 'approved', 'rejected'], default: 'none' },
+  refundReason: String,
   billingDetails: {
     name: String,
     email: String,

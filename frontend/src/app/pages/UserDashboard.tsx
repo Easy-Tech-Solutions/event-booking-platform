@@ -78,14 +78,19 @@ function MyTickets() {
   const formatDate = (d: string) => new Date(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 
   const handleTransfer = async (orderId: string) => {
-    // TODO: call transfer API when backend implements it
-    setActionMsg((p) => ({ ...p, [orderId]: `Transfer request sent to ${transferEmail}` }));
+    // Transfer is not yet supported — inform the user gracefully
+    setActionMsg((p) => ({ ...p, [orderId]: `Transfer requests are handled by support. Please contact us via Help Center with order #${orderId.slice(-6).toUpperCase()}.` }));
     setTransferOrderId(null); setTransferEmail('');
   };
 
   const handleRefund = async (orderId: string) => {
-    // TODO: call refund API when backend implements it
-    setActionMsg((p) => ({ ...p, [orderId]: 'Refund request submitted. Status: Pending review.' }));
+    if (!refundReason.trim()) return;
+    try {
+      await apiClient.post(`/orders/${orderId}/refund`, { reason: refundReason });
+      setActionMsg((p) => ({ ...p, [orderId]: 'Refund processed successfully. Amount will appear in 5–10 business days.' }));
+    } catch (e: any) {
+      setActionMsg((p) => ({ ...p, [orderId]: e.response?.data?.message || 'Refund request failed. Please contact support.' }));
+    }
     setRefundOrderId(null); setRefundReason('');
   };
 
@@ -340,6 +345,16 @@ function ProfileSettings() {
         </div>
       </Card>
 
+      {user?.role === 'attendee' && (
+        <Card className="p-6">
+          <h3 className="text-lg font-semibold mb-2">Become an Organizer</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Want to create and host events? Request organizer access — an admin will review your request.
+          </p>
+          <OrganizerRequestButton currentStatus={user.organizerStatus} />
+        </Card>
+      )}
+
       <Card className="p-6">
         <h3 className="text-lg font-semibold mb-4">Change Password</h3>
         <div className="space-y-4">
@@ -364,5 +379,38 @@ function ProfileSettings() {
         </div>
       </Card>
     </div>
+  );
+}
+
+function OrganizerRequestButton({ currentStatus }: { currentStatus?: string }) {
+  const [status, setStatus] = useState(currentStatus || 'none');
+  const [isLoading, setIsLoading] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const handleRequest = async () => {
+    setIsLoading(true);
+    setMsg('');
+    try {
+      const res = await apiClient.post('/auth/request-organizer');
+      setStatus('pending');
+      setMsg(res.data.message);
+    } catch (e: any) {
+      setMsg(e.response?.data?.message || 'Request failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (status === 'pending') return <p className="text-sm text-yellow-600 font-medium">⏳ Your organizer request is pending admin approval.</p>;
+  if (status === 'approved') return <p className="text-sm text-[#004406] font-medium">✅ Organizer access approved.</p>;
+  if (status === 'rejected') return <p className="text-sm text-destructive font-medium">❌ Your request was not approved. <a href="/help" className="underline">Contact support</a> for more info.</p>;
+
+  return (
+    <>
+      <Button className="bg-[#004406] hover:bg-[#003305] text-white" onClick={handleRequest} disabled={isLoading}>
+        {isLoading ? 'Submitting...' : 'Request Organizer Access'}
+      </Button>
+      {msg && <p className="text-sm text-[#004406] mt-2">{msg}</p>}
+    </>
   );
 }

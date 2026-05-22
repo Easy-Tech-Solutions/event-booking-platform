@@ -18,6 +18,7 @@ import {
 } from "../controllers/event.controller.js";
 import {
   eventValidation,
+  createEventValidation,
   paginationValidation,
   mongoIdValidation,
 } from "../validators/index.js";
@@ -78,7 +79,7 @@ router.post(
   authenticate,
   authorize("organizer", "admin"),
   upload.single("image"),
-  eventValidation,
+  createEventValidation,
   createEvent,
 );
 router.put(

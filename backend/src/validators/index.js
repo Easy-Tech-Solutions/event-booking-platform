@@ -14,6 +14,19 @@ const loginValidation = [
 ];
 
 const eventValidation = [
+  body('title').optional().trim().notEmpty().withMessage('Event title cannot be empty'),
+  body('description').optional().trim().notEmpty().withMessage('Event description cannot be empty'),
+  body('category').optional().isMongoId().withMessage('Valid category ID is required'),
+  body('startDate').optional().isISO8601().withMessage('Valid start date is required'),
+  body('endDate').optional().isISO8601().withMessage('Valid end date is required'),
+  body('capacity').optional().isInt({ min: 1 }).withMessage('Capacity must be at least 1'),
+  body('location.venue').optional().trim(),
+  body('location.address').optional().trim(),
+  body('location.city').optional().trim(),
+  body('isOnline').optional().isBoolean()
+];
+
+const createEventValidation = [
   body('title').trim().notEmpty().withMessage('Event title is required'),
   body('description').trim().notEmpty().withMessage('Event description is required'),
   body('category').isMongoId().withMessage('Valid category ID is required'),
@@ -60,6 +73,7 @@ export {
   registerValidation,
   loginValidation,
   eventValidation,
+  createEventValidation,
   ticketTypeValidation,
   orderValidation,
   paginationValidation,
