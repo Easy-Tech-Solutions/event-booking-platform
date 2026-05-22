@@ -14,6 +14,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { VerifyEmail } from './pages/VerifyEmail';
 import { ResetPassword } from './pages/ResetPassword';
 import { ForgotPassword } from './pages/ForgotPassword';
+import { CreateEventPage } from './pages/CreateEventPage';
 
 export const router = createBrowserRouter([
   { path: '/', Component: LandingPage },
@@ -36,6 +37,12 @@ export const router = createBrowserRouter([
   {
     path: '/user',
     element: <ProtectedRoute><UserDashboard /></ProtectedRoute>,
+  },
+  // Standalone multi-step event creation wizard (has its own Navbar)
+  // Must be declared before /organizer/* so it takes precedence over the wildcard
+  {
+    path: '/organizer/create',
+    element: <ProtectedRoute requiredRole="organizer"><CreateEventPage /></ProtectedRoute>,
   },
   {
     path: '/organizer/*',

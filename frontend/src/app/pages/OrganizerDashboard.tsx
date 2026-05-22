@@ -3,16 +3,11 @@ import { Routes, Route, Link, useLocation, useNavigate } from 'react-router';
 import { Navbar } from '../components/Navbar';
 import { Card } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { LayoutDashboard, Calendar, Plus, DollarSign, BarChart3, Trash2, Eye, TrendingUp, Users, Ticket } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useAppDispatch, useAppSelector } from '../store';
-import { fetchMyEvents, createEvent, deleteEvent } from '../store/slices/eventsSlice';
-import apiClient from '../api/client';
+import { fetchMyEvents, deleteEvent } from '../store/slices/eventsSlice';
 
 export function OrganizerDashboard() {
   const location = useLocation();
@@ -48,7 +43,6 @@ export function OrganizerDashboard() {
             <Routes>
               <Route path="dashboard" element={<Overview />} />
               <Route path="events" element={<MyEvents />} />
-              <Route path="create" element={<CreateEventForm />} />
               <Route path="analytics" element={<Analytics />} />
               <Route index element={<Overview />} />
             </Routes>
@@ -162,89 +156,6 @@ function MyEvents() {
         </div>
       )}
     </div>
-  );
-}
-
-function CreateEventForm() {
-  const dispatch = useAppDispatch();
-  const navigate = useNavigate();
-  const { isLoading, error } = useAppSelector((state) => state.events);
-  const [form, setForm] = useState({ title: '', description: '', category: '', capacity: '', startDate: '', endDate: '', venue: '', city: '', state: '', country: '', isOnline: false, onlineLink: '' });
-  const [success, setSuccess] = useState(false);
-  const [categories, setCategories] = useState<{ _id: string; name: string }[]>([]);
-
-  useEffect(() => {
-    apiClient.get('/categories')
-      .then((res) => setCategories(res.data.categories || []))
-      .catch(() => setCategories([]));
-  }, []);
-
-  const handleSubmit = async (e: React.FormEvent, status: 'draft' | 'published' = 'published') => {
-    e.preventDefault();
-    const result = await dispatch(createEvent({
-      title: form.title, description: form.description, category: form.category,
-      capacity: parseInt(form.capacity), startDate: form.startDate, endDate: form.endDate,
-      location: { venue: form.venue, city: form.city, state: form.state, country: form.country },
-      isOnline: form.isOnline, onlineLink: form.onlineLink,
-      status,
-    } as any));
-    if (createEvent.fulfilled.match(result)) {
-      setSuccess(true);
-      setTimeout(() => navigate('/organizer/events'), 1500);
-    }
-  };
-
-  return (
-    <Card className="p-6">
-      <h2 className="text-2xl font-bold mb-6">Create New Event</h2>
-      <form className="space-y-6" onSubmit={handleSubmit}>
-        <div>
-          <h3 className="font-semibold mb-4">Basic Information</h3>
-          <div className="space-y-4">
-            <div><Label>Event Title *</Label><Input value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} placeholder="Enter event title" required /></div>
-            <div><Label>Description *</Label><Textarea value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} placeholder="Describe your event" rows={4} required /></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label>Category *</Label>
-                <Select value={form.category} onValueChange={(v) => setForm((p) => ({ ...p, category: v }))}>
-                  <SelectTrigger><SelectValue placeholder={categories.length === 0 ? 'Loading...' : 'Select category'} /></SelectTrigger>
-                  <SelectContent>
-                    {categories.map((c) => (
-                      <SelectItem key={c._id} value={c._id}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div><Label>Capacity *</Label><Input type="number" value={form.capacity} onChange={(e) => setForm((p) => ({ ...p, capacity: e.target.value }))} placeholder="100" required /></div>
-            </div>
-          </div>
-        </div>
-        <div>
-          <h3 className="font-semibold mb-4">Date & Time</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><Label>Start Date *</Label><Input type="datetime-local" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} required /></div>
-            <div><Label>End Date *</Label><Input type="datetime-local" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} required /></div>
-          </div>
-        </div>
-        <div>
-          <h3 className="font-semibold mb-4">Location</h3>
-          <div className="space-y-4">
-            <div><Label>Venue Name</Label><Input value={form.venue} onChange={(e) => setForm((p) => ({ ...p, venue: e.target.value }))} placeholder="Venue name" /></div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div><Label>City</Label><Input value={form.city} onChange={(e) => setForm((p) => ({ ...p, city: e.target.value }))} placeholder="City" /></div>
-              <div><Label>State</Label><Input value={form.state} onChange={(e) => setForm((p) => ({ ...p, state: e.target.value }))} placeholder="State" /></div>
-              <div><Label>Country</Label><Input value={form.country} onChange={(e) => setForm((p) => ({ ...p, country: e.target.value }))} placeholder="Country" /></div>
-            </div>
-          </div>
-        </div>
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        {success && <p className="text-sm text-[#004406]">Event created! Redirecting...</p>}
-        <div className="flex gap-3 pt-4">
-          <Button type="submit" size="lg" className="bg-[#004406] hover:bg-[#003305] text-white" disabled={isLoading || !form.category}>{isLoading ? 'Creating...' : 'Publish Event'}</Button>
-          <Button type="button" variant="outline" size="lg" disabled={isLoading} onClick={(e) => handleSubmit(e as any, 'draft')}>Save as Draft</Button>
-        </div>
-      </form>
-    </Card>
   );
 }
 
