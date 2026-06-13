@@ -187,12 +187,30 @@ export function BookingFlow() {
                 <div className="space-y-4">
                   <div>
                     <Label>Card Details</Label>
-                    <div className="mt-1 border rounded-lg p-3">
-                      <CardElement options={{ style: { base: { fontSize: '16px', color: '#1a1a1a' } } }} />
+                    <div className="mt-1 border border-input rounded-lg p-3 bg-white min-h-[44px] flex items-center">
+                      <div className="w-full">
+                        <CardElement
+                          options={{
+                            style: {
+                              base: {
+                                fontSize: '16px',
+                                color: '#1a1a1a',
+                                fontFamily: 'inherit',
+                                '::placeholder': { color: '#9ca3af' },
+                              },
+                              invalid: { color: '#ef4444' },
+                            },
+                            hidePostalCode: true,
+                          }}
+                        />
+                      </div>
                     </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Test card: 4242 4242 4242 4242 · Any future date · Any 3-digit CVC
+                    </p>
                   </div>
                   <div className="bg-[#004406]/10 border border-[#004406]/20 rounded-lg p-4 flex items-start gap-3">
-                    <Lock className="w-5 h-5 text-[#004406] mt-0.5" />
+                    <Lock className="w-5 h-5 text-[#004406] mt-0.5 flex-shrink-0" />
                     <div className="text-sm text-[#004406]">
                       <div className="font-medium mb-1">Secure Payment</div>
                       <div>Your payment is processed securely by Stripe. We never store your card details.</div>
