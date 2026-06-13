@@ -434,6 +434,33 @@ const getAnalytics = async (req, res, next) => {
   }
 };
 
+// ─── POST /api/admin/setup ────────────────────────────────────────────────────
+// One-time bootstrap: promotes the authenticated user to admin.
+// Permanently disabled once any admin account exists in the database.
+const setupInitialAdmin = async (req, res, next) => {
+  try {
+    const existingAdmin = await User.findOne({ role: "admin" });
+    if (existingAdmin) {
+      return res.status(403).json({
+        message: "An admin account already exists. This endpoint is disabled.",
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: "User not found." });
+
+    user.role = "admin";
+    await user.save();
+
+    return res.json({
+      message: "You have been promoted to admin. Please sign out and sign back in.",
+      user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export {
   getAllUsers,
   getUserById,
@@ -449,4 +476,5 @@ export {
   changeEventStatus,
   getAllOrders,
   getAnalytics,
+  setupInitialAdmin,
 };

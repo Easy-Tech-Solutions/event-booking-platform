@@ -11,7 +11,7 @@ import { Separator } from '../components/ui/separator';
 import { Ticket, Heart, Calendar, CreditCard, Settings, Download, MapPin, User } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../store';
 import { fetchMyOrders } from '../store/slices/ordersSlice';
-import { updateUser } from '../store/slices/authSlice';
+import { updateUser, fetchProfile } from '../store/slices/authSlice';
 import { TicketQRCode } from '../components/TicketQRCode';
 import { PasswordInput, PasswordStrengthMeter, validatePassword } from '../components/PasswordInput';
 import apiClient from '../api/client';
@@ -355,6 +355,16 @@ function ProfileSettings() {
         </Card>
       )}
 
+      {user?.role !== 'admin' && (
+        <Card className="p-6 border-dashed border-amber-300 bg-amber-50/50">
+          <h3 className="text-lg font-semibold mb-2">Admin Setup</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Promote your account to admin. Only works when no admin exists on the platform — permanently disabled after the first activation.
+          </p>
+          <AdminSetupButton />
+        </Card>
+      )}
+
       <Card className="p-6">
         <h3 className="text-lg font-semibold mb-4">Change Password</h3>
         <div className="space-y-4">
@@ -379,6 +389,49 @@ function ProfileSettings() {
         </div>
       </Card>
     </div>
+  );
+}
+
+function AdminSetupButton() {
+  const dispatch = useAppDispatch();
+  const [isLoading, setIsLoading] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [done, setDone] = useState(false);
+
+  const handleSetup = async () => {
+    setIsLoading(true);
+    setMsg('');
+    try {
+      const res = await apiClient.post('/admin/setup');
+      setMsg(res.data.message);
+      setDone(true);
+      // Refresh Redux user state so the new role takes effect immediately
+      await dispatch(fetchProfile());
+    } catch (e: any) {
+      setMsg(e.response?.data?.message || 'Setup failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (done) {
+    return (
+      <div>
+        <p className="text-sm text-[#004406] font-medium mb-3">✅ {msg}</p>
+        <a href="/admin/dashboard" className="inline-flex items-center px-4 py-2 bg-[#004406] text-white text-sm font-medium rounded-lg hover:bg-[#003305]">
+          Go to Admin Dashboard →
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <Button className="bg-amber-600 hover:bg-amber-700 text-white" onClick={handleSetup} disabled={isLoading}>
+        {isLoading ? 'Activating…' : 'Activate Admin Access'}
+      </Button>
+      {msg && <p className="text-sm text-destructive mt-2">{msg}</p>}
+    </>
   );
 }
 
