@@ -37,6 +37,29 @@ const eventSchema = new mongoose.Schema({
   },
   liveSession: { type: mongoose.Schema.Types.ObjectId, ref: 'LiveSession', default: null },
 
+  // ── Reserved seating ──────────────────────────────────────────────────────
+  hasReservedSeating: { type: Boolean, default: false },
+  seatingConfig: {
+    rows: { type: Number, default: 10 },
+    seatsPerRow: { type: Number, default: 12 },
+    sections: [{ name: String, rows: Number, seatsPerRow: Number }],
+  },
+
+  // ── Timed entry ───────────────────────────────────────────────────────────
+  timedEntryEnabled: { type: Boolean, default: false },
+  timedEntrySlots: [{ label: String, startTime: String, capacity: Number }],
+
+  // ── Fee absorption default ─────────────────────────────────────────────────
+  // organizer-level default; can be overridden per TicketType
+  organizerAbsorbsFees: { type: Boolean, default: false },
+
+  // ── Embedded checkout ─────────────────────────────────────────────────────
+  allowEmbeddedCheckout: { type: Boolean, default: false },
+
+  // ── Tracking pixels ───────────────────────────────────────────────────────
+  metaPixelId: { type: String, default: null },
+  googleTagId: { type: String, default: null },
+
   // ── Trust & Safety ────────────────────────────────────────────────────────
   fraudFlags: { type: [String], default: [] },
   fraudScore: { type: Number, default: 0 },

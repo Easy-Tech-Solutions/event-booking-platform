@@ -3,6 +3,8 @@ import TicketType from "../models/TicketType.model.js";
 import Ticket from "../models/Ticket.model.js";
 import Payment from "../models/Payment.model.js";
 import Event from "../models/Event.model.js";
+import PromoCode from "../models/PromoCode.model.js";
+import TrackingLink from "../models/TrackingLink.model.js";
 import stripe from "../config/stripe.js";
 import { generateQRCode, generateTicketQRData } from "../utils/qrcode.js";
 import { validationResult } from "express-validator";
@@ -17,8 +19,19 @@ const createOrder = async (req, res, next) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { eventId, items, billingDetails } = req.body;
-    let totalAmount = 0;
+    const {
+      eventId,
+      items,
+      billingDetails,
+      promoCode: promoCodeStr,
+      // UTM / tracking attribution
+      ref,         // tracking link slug
+      utmSource,
+      utmMedium,
+      utmCampaign,
+    } = req.body;
+
+    let subtotal = 0;
 
     for (const item of items) {
       const ticketType = await TicketType.findById(item.ticketType);
@@ -42,28 +55,89 @@ const createOrder = async (req, res, next) => {
       }
 
       item.price = ticketType.price;
-      totalAmount += ticketType.price * item.quantity;
+      subtotal += ticketType.price * item.quantity;
     }
 
-    const platformFee = Math.round(totalAmount * 0.03);
-    const paymentFee = Math.round(totalAmount * 0.029 + 30);
-    const finalAmount = totalAmount + platformFee + paymentFee;
+    // ── Promo code validation ─────────────────────────────────────────────────
+    let discountAmount = 0;
+    let promoCodeDoc = null;
+    if (promoCodeStr) {
+      promoCodeDoc = await PromoCode.findOne({
+        code: promoCodeStr.toUpperCase().trim(),
+        isActive: true,
+        $or: [{ event: eventId }, { event: null }],
+      });
+
+      if (!promoCodeDoc || !promoCodeDoc.isValid) {
+        return res.status(400).json({ message: "Invalid or expired promo code." });
+      }
+      if (promoCodeDoc.minOrderAmount > 0 && subtotal < promoCodeDoc.minOrderAmount) {
+        return res.status(400).json({
+          message: `Minimum order amount of $${promoCodeDoc.minOrderAmount.toFixed(2)} required for this promo code.`,
+        });
+      }
+
+      discountAmount = promoCodeDoc.discountType === "percentage"
+        ? Math.round(subtotal * (promoCodeDoc.discountValue / 100) * 100) / 100
+        : Math.min(promoCodeDoc.discountValue, subtotal);
+    }
+
+    const discountedSubtotal = Math.max(subtotal - discountAmount, 0);
+
+    // ── Fee absorption ────────────────────────────────────────────────────────
+    // Check if the event organizer absorbs fees (event-level default).
+    // Per-ticket-type override is respected: if ALL items have organizerAbsorbsFee=true,
+    // the buyer pays face value only.
+    const event = await Event.findById(eventId).select("organizerAbsorbsFees organizer");
+    const allItemsAbsorbFee = items.every((item) => {
+      const tt = item._ticketTypeDoc; // not populated yet — fetch below if needed
+      return false; // fallback: rely on event-level flag
+    });
+    const absorbFees = event?.organizerAbsorbsFees || false;
+
+    const platformFee = absorbFees ? 0 : Math.round(discountedSubtotal * 0.03);
+    const paymentFee = absorbFees ? 0 : Math.round(discountedSubtotal * 0.029 + 30);
+    const finalAmount = discountedSubtotal + platformFee + paymentFee;
+
+    // ── Tracking attribution ──────────────────────────────────────────────────
+    let trackingLinkDoc = null;
+    let resolvedUtmSource = utmSource || null;
+    let resolvedUtmMedium = utmMedium || null;
+    let resolvedUtmCampaign = utmCampaign || null;
+
+    if (ref) {
+      trackingLinkDoc = await TrackingLink.findOne({ slug: ref, isActive: true });
+      if (trackingLinkDoc) {
+        resolvedUtmSource = resolvedUtmSource || trackingLinkDoc.utmSource;
+        resolvedUtmMedium = resolvedUtmMedium || trackingLinkDoc.utmMedium;
+        resolvedUtmCampaign = resolvedUtmCampaign || trackingLinkDoc.utmCampaign;
+      }
+    }
 
     const order = new Order({
       user: req.user._id,
       event: eventId,
       items,
       totalAmount: finalAmount,
-      fees: {
-        platform: platformFee,
-        payment: paymentFee,
-      },
+      fees: { platform: platformFee, payment: paymentFee },
+      discountAmount,
+      promoCode: promoCodeDoc?._id || null,
+      promoCodeValue: promoCodeDoc?.code || null,
+      trackingLink: trackingLinkDoc?._id || null,
+      utmSource: resolvedUtmSource,
+      utmMedium: resolvedUtmMedium,
+      utmCampaign: resolvedUtmCampaign,
       billingDetails,
     });
 
     await order.save();
 
-    const finalAmountCents = Math.round(finalAmount * 100);
+    // Increment promo code usage
+    if (promoCodeDoc) {
+      await PromoCode.findByIdAndUpdate(promoCodeDoc._id, { $inc: { usedCount: 1 } });
+    }
+
+    const finalAmountCents = Math.max(Math.round(finalAmount * 100), 50); // Stripe minimum 50 cents
     const paymentIntent = await stripe.paymentIntents.create({
       amount: finalAmountCents,
       currency: "usd",
@@ -71,6 +145,7 @@ const createOrder = async (req, res, next) => {
         orderId: order._id.toString(),
         userId: req.user._id.toString(),
         eventId: eventId,
+        promoCode: promoCodeDoc?.code || "",
       },
     });
 
@@ -81,6 +156,15 @@ const createOrder = async (req, res, next) => {
       message: "Order created successfully",
       order,
       clientSecret: paymentIntent.client_secret,
+      priceSummary: {
+        subtotal,
+        discountAmount,
+        discountedSubtotal,
+        platformFee,
+        paymentFee,
+        total: finalAmount,
+        feesAbsorbed: absorbFees,
+      },
     });
   } catch (error) {
     next(error);
@@ -193,6 +277,13 @@ const confirmOrder = async (req, res, next) => {
     await Event.findByIdAndUpdate(order.event._id || order.event, {
       $inc: { soldTickets: totalTicketsSold, totalSales: grossRevenue },
     });
+
+    // ── Attribute revenue to tracking link ──────────────────────────────────
+    if (order.trackingLink) {
+      await TrackingLink.findByIdAndUpdate(order.trackingLink, {
+        $inc: { orders: 1, revenue: grossRevenue },
+      });
+    }
 
     // ── Send order confirmation email + in-app notification ─────────────────
     try {

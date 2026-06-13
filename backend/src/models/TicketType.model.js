@@ -37,8 +37,36 @@ const ticketTypeSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
-  benefits: [String]
-}, {
+  benefits: [String],
+
+  // ── Ticket category ──────────────────────────────────────────────────────
+  ticketCategory: {
+    type: String,
+    enum: ['standard', 'early_bird', 'vip', 'donation', 'hidden'],
+    default: 'standard',
+  },
+
+  // ── Early bird auto-expiry ────────────────────────────────────────────────
+  // (use saleEndDate for expiry — ticketCategory='early_bird' is the label)
+
+  // ── Donation-based ────────────────────────────────────────────────────────
+  isDonation: { type: Boolean, default: false },
+  minDonation: { type: Number, default: 0 },
+
+  // ── Hidden (access-code only) ─────────────────────────────────────────────
+  isHidden: { type: Boolean, default: false },
+
+  // ── Timed entry ───────────────────────────────────────────────────────────
+  timedEntrySlot: { type: String, default: null }, // e.g. "10:00–10:30"
+
+  // ── Fee absorption ────────────────────────────────────────────────────────
+  // organizer absorbs platform fee → buyer pays face value only
+  organizerAbsorbsFee: { type: Boolean, default: false },
+
+  // ── VIP / Comp ────────────────────────────────────────────────────────────
+  isVip: { type: Boolean, default: false },
+  isComp: { type: Boolean, default: false }, // complimentary (free, bypasses payment)
+} , {
   timestamps: true,
   toJSON: { virtuals: true },
   toObject: { virtuals: true },
