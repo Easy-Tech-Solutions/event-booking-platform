@@ -72,7 +72,10 @@ app.use(
 
       if (
         allowedOrigins.includes(normalizeOrigin(origin)) ||
-        /^https:\/\/eventhub-iota(-git-.*)?\.vercel\.app$/.test(
+        // Match any Vercel preview deployment for this project:
+        // eventhub-iota.vercel.app, eventhub-iota-git-*.vercel.app,
+        // eventhub-*.vercel.app (covers personal account previews like eventhub-gam51th7z-*.vercel.app)
+        /^https:\/\/eventhub(-[a-z0-9]+)*(-git-[^.]+)?(-[a-z0-9-]+)?\.vercel\.app$/.test(
           normalizeOrigin(origin),
         )
       ) {
