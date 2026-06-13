@@ -16,6 +16,8 @@ import {
   getEventCheckInStats,
   blastEventMessage,
 } from "../controllers/event.controller.js";
+import { reportEvent } from "../controllers/report.controller.js";
+import { fraudDetection } from "../middlewares/fraudDetection.js";
 import {
   eventValidation,
   createEventValidation,
@@ -57,6 +59,7 @@ router.post(
 );
 
 router.get("/:id", mongoIdValidation, getEventById);
+router.post("/:id/report", authenticate, mongoIdValidation, reportEvent);
 router.post("/:id/favorite", authenticate, mongoIdValidation, addFavorite);
 router.delete("/:id/favorite", authenticate, mongoIdValidation, removeFavorite);
 router.get(
@@ -80,6 +83,7 @@ router.post(
   authorize("organizer", "admin"),
   upload.single("image"),
   createEventValidation,
+  fraudDetection,
   createEvent,
 );
 router.put(

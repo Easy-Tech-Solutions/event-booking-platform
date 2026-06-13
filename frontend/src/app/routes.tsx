@@ -15,6 +15,7 @@ import { VerifyEmail } from './pages/VerifyEmail';
 import { ResetPassword } from './pages/ResetPassword';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { CreateEventPage } from './pages/CreateEventPage';
+import { LiveEventRoom } from './pages/LiveEventRoom';
 import { BlogPage } from './pages/BlogPage';
 import { BlogPostPage } from './pages/BlogPostPage';
 import { ContactPage } from './pages/ContactPage';
@@ -35,6 +36,10 @@ export const router = createBrowserRouter([
   {
     path: '/book/:id',
     element: <ProtectedRoute><BookingFlow /></ProtectedRoute>,
+  },
+  {
+    path: '/live/:sessionId',
+    element: <ProtectedRoute><LiveEventRoom /></ProtectedRoute>,
   },
   {
     path: '/user/*',

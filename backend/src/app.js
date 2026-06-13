@@ -21,6 +21,11 @@ import adminRoutes from "./routes/admin.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 import supportRoutes from "./routes/support.routes.js";
 import blogRoutes from "./routes/blog.routes.js";
+import uploadRoutes from "./routes/upload.routes.js";
+import liveRoutes from "./routes/live.routes.js";
+import integrationRoutes from "./routes/integration.routes.js";
+import calendarRoutes from "./routes/calendar.routes.js";
+import kycRoutes from "./routes/kyc.routes.js";
 
 // const { CLIENT_URL } = env;
 
@@ -128,6 +133,11 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/blog", blogRoutes);
+app.use("/api/upload", uploadRoutes);
+app.use("/api/live", liveRoutes);
+app.use("/api/integrations", integrationRoutes);
+app.use("/api/calendar", calendarRoutes);
+app.use("/api/kyc", kycRoutes);
 
 // Error handling
 app.use(notFound);
