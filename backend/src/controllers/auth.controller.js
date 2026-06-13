@@ -9,6 +9,8 @@ import {
 } from "../utils/emailTemplates.js";
 import path from "path";
 import env from "../config/env.js";
+import speakeasy from "speakeasy";
+import QRCode from "qrcode";
 
 const register = async (req, res, next) => {
   try {
@@ -112,6 +114,19 @@ const login = async (req, res, next) => {
     if (user.isSuspended) {
       return res.status(403).json({
         message: "Your account has been suspended. Please contact support.",
+      });
+    }
+
+    // 2FA check — if enabled, issue a short-lived challenge token instead of full tokens
+    if (user.totpEnabled) {
+      const challengeToken = crypto.randomBytes(32).toString('hex');
+      user.totpChallengeToken = challengeToken;
+      user.totpChallengeExpires = Date.now() + 5 * 60 * 1000; // 5 min
+      await user.save();
+      return res.json({
+        requiresTwoFactor: true,
+        challengeToken,
+        message: "2FA required. Please verify with your authenticator app.",
       });
     }
 
@@ -261,14 +276,24 @@ const resetPassword = async (req, res, next) => {
 // Update profile — firstName, lastName, phone
 const updateProfile = async (req, res, next) => {
   try {
-    const { firstName, lastName, phone } = req.body;
+    const { firstName, lastName, phone, bio, socialLinks } = req.body;
 
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ message: "User not found." });
 
     if (firstName) user.firstName = firstName;
     if (lastName) user.lastName = lastName;
-    if (phone) user.phone = phone;
+    if (phone !== undefined) user.phone = phone;
+    if (bio !== undefined) user.bio = bio;
+
+    if (socialLinks && typeof socialLinks === 'object') {
+      user.socialLinks = {
+        website: socialLinks.website ?? user.socialLinks?.website,
+        twitter: socialLinks.twitter ?? user.socialLinks?.twitter,
+        linkedin: socialLinks.linkedin ?? user.socialLinks?.linkedin,
+        instagram: socialLinks.instagram ?? user.socialLinks?.instagram,
+      };
+    }
 
     // Handle avatar upload if file is attached
     if (req.file) {
@@ -379,6 +404,163 @@ const googleAuth = async (req, res, next) => {
   }
 };
 
+// ─── POST /api/auth/2fa/setup ─────────────────────────────────────────────────
+// Generate a TOTP secret + QR code; don't enable until verified
+const setup2FA = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id).select('+totpPendingSecret');
+
+    const secret = speakeasy.generateSecret({
+      name: `EventHub (${user.email})`,
+      length: 20,
+    });
+
+    user.totpPendingSecret = secret.base32;
+    await user.save();
+
+    const otpauthUrl = secret.otpauth_url;
+    const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
+
+    return res.json({
+      message: 'Scan the QR code with your authenticator app, then verify with a code.',
+      qrCode: qrCodeDataUrl,
+      manualKey: secret.base32,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── POST /api/auth/2fa/verify ────────────────────────────────────────────────
+// Verify the TOTP code and activate 2FA; generates backup codes
+const verify2FA = async (req, res, next) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ message: 'TOTP token required.' });
+
+    const user = await User.findById(req.user._id).select('+totpPendingSecret +backupCodes');
+    if (!user.totpPendingSecret) {
+      return res.status(400).json({ message: 'No 2FA setup in progress. Call /2fa/setup first.' });
+    }
+
+    const isValid = speakeasy.totp.verify({
+      secret: user.totpPendingSecret,
+      encoding: 'base32',
+      token,
+      window: 1,
+    });
+
+    if (!isValid) return res.status(400).json({ message: 'Invalid code. Please try again.' });
+
+    // Generate 8 backup codes
+    const backupCodes = Array.from({ length: 8 }, () =>
+      crypto.randomBytes(4).toString('hex').toUpperCase(),
+    );
+
+    user.totpSecret = user.totpPendingSecret;
+    user.totpPendingSecret = undefined;
+    user.totpEnabled = true;
+    user.backupCodes = backupCodes;
+    await user.save();
+
+    return res.json({
+      message: '2FA enabled successfully. Save your backup codes — they won\'t be shown again.',
+      backupCodes,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── POST /api/auth/2fa/disable ───────────────────────────────────────────────
+const disable2FA = async (req, res, next) => {
+  try {
+    const { token, password } = req.body;
+
+    const user = await User.findById(req.user._id).select('+totpSecret +backupCodes +password');
+    if (!user.totpEnabled) {
+      return res.status(400).json({ message: '2FA is not enabled on this account.' });
+    }
+
+    // Require either TOTP code or account password to disable
+    let authorized = false;
+    if (token) {
+      authorized = speakeasy.totp.verify({
+        secret: user.totpSecret,
+        encoding: 'base32',
+        token,
+        window: 1,
+      });
+    } else if (password) {
+      authorized = await user.comparePassword(password);
+    }
+
+    if (!authorized) {
+      return res.status(401).json({ message: 'Invalid code or password.' });
+    }
+
+    user.totpSecret = undefined;
+    user.totpEnabled = false;
+    user.backupCodes = [];
+    await user.save();
+
+    return res.json({ message: '2FA has been disabled.' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── POST /api/auth/2fa/challenge ─────────────────────────────────────────────
+// Complete the 2FA login challenge with a TOTP code or backup code
+const challenge2FA = async (req, res, next) => {
+  try {
+    const { challengeToken, token, backupCode } = req.body;
+    if (!challengeToken) return res.status(400).json({ message: 'challengeToken is required.' });
+
+    const user = await User.findOne({
+      totpChallengeToken: challengeToken,
+      totpChallengeExpires: { $gt: Date.now() },
+    }).select('+totpSecret +backupCodes +totpChallengeToken +totpChallengeExpires');
+
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid or expired 2FA challenge.' });
+    }
+
+    let authorized = false;
+
+    if (token) {
+      authorized = speakeasy.totp.verify({
+        secret: user.totpSecret,
+        encoding: 'base32',
+        token,
+        window: 1,
+      });
+    } else if (backupCode) {
+      const idx = user.backupCodes.indexOf(backupCode.toUpperCase().trim());
+      if (idx !== -1) {
+        authorized = true;
+        user.backupCodes.splice(idx, 1); // each backup code is single-use
+      }
+    }
+
+    if (!authorized) {
+      return res.status(401).json({ message: 'Invalid 2FA code.' });
+    }
+
+    // Clear challenge fields
+    user.totpChallengeToken = undefined;
+    user.totpChallengeExpires = undefined;
+
+    const { accessToken, refreshToken } = generateTokens({ userId: user._id });
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    return res.json({ message: 'Login successful', user, accessToken, refreshToken });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export {
   register,
   login,
@@ -391,4 +573,8 @@ export {
   updateProfile,
   changePassword,
   googleAuth,
+  setup2FA,
+  verify2FA,
+  disable2FA,
+  challenge2FA,
 };

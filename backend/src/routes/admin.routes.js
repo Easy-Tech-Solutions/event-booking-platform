@@ -7,6 +7,7 @@ import {
   unsuspendUser,
   deleteUser,
   changeUserRole,
+  updateUserPermissions,
   getOrganizerRequests,
   approveOrganizer,
   rejectOrganizer,
@@ -15,6 +16,13 @@ import {
   getAllOrders,
   getAnalytics,
   setupInitialAdmin,
+  getAllSupportTickets,
+  getSupportTicketById,
+  updateSupportTicket,
+  getAllTickets,
+  voidTicket,
+  getAdminBlogPosts,
+  getAdminCategories,
 } from "../controllers/admin.controller.js";
 
 const router = express.Router();
@@ -22,30 +30,46 @@ const router = express.Router();
 // One-time bootstrap — only works when no admin exists; requires login only
 router.post("/setup", authenticate, setupInitialAdmin);
 
-// All routes below require admin role
-router.use(authenticate, authorize("admin"));
+// All routes below require admin or superadmin role
+router.use(authenticate, authorize("admin", "superadmin", "support_agent"));
 
 // ── User Management ───────────────────────────────────────────────────────────
 router.get("/users", getAllUsers);
 router.get("/users/:id", getUserById);
-router.patch("/users/:id/suspend", suspendUser);
-router.patch("/users/:id/unsuspend", unsuspendUser);
-router.delete("/users/:id", deleteUser);
-router.patch("/users/:id/role", changeUserRole);
+router.patch("/users/:id/suspend", authorize("admin", "superadmin"), suspendUser);
+router.patch("/users/:id/unsuspend", authorize("admin", "superadmin"), unsuspendUser);
+router.delete("/users/:id", authorize("admin", "superadmin"), deleteUser);
+router.patch("/users/:id/role", authorize("admin", "superadmin"), changeUserRole);
+router.patch("/users/:id/permissions", authorize("admin", "superadmin"), updateUserPermissions);
 
 // ── Organizer Approval ────────────────────────────────────────────────────────
 router.get("/organizer-requests", getOrganizerRequests);
-router.patch("/users/:id/approve-organizer", approveOrganizer);
-router.patch("/users/:id/reject-organizer", rejectOrganizer);
+router.patch("/users/:id/approve-organizer", authorize("admin", "superadmin"), approveOrganizer);
+router.patch("/users/:id/reject-organizer", authorize("admin", "superadmin"), rejectOrganizer);
 
 // ── Event Management ──────────────────────────────────────────────────────────
 router.get("/events", getAllEvents);
-router.patch("/events/:id/status", changeEventStatus);
+router.patch("/events/:id/status", authorize("admin", "superadmin"), changeEventStatus);
 
 // ── Order Management ──────────────────────────────────────────────────────────
 router.get("/orders", getAllOrders);
 
 // ── Analytics ─────────────────────────────────────────────────────────────────
-router.get("/analytics", getAnalytics);
+router.get("/analytics", authorize("admin", "superadmin"), getAnalytics);
+
+// ── Support Tickets ───────────────────────────────────────────────────────────
+router.get("/support-tickets", getAllSupportTickets);
+router.get("/support-tickets/:id", getSupportTicketById);
+router.patch("/support-tickets/:id", updateSupportTicket);
+
+// ── Event Tickets (event admission tickets) ───────────────────────────────────
+router.get("/tickets", getAllTickets);
+router.patch("/tickets/:id/void", authorize("admin", "superadmin"), voidTicket);
+
+// ── Blog (admin view — all statuses) ─────────────────────────────────────────
+router.get("/blog", getAdminBlogPosts);
+
+// ── Categories ────────────────────────────────────────────────────────────────
+router.get("/categories", getAdminCategories);
 
 export default router;
