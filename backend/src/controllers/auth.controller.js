@@ -11,6 +11,7 @@ import path from "path";
 import env from "../config/env.js";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
+import { generateOtp, hashOtp, verifyHashedOtp, sendEmailOtp, sendSmsOtp } from "../utils/sendOtp.js";
 
 const register = async (req, res, next) => {
   try {
@@ -117,16 +118,39 @@ const login = async (req, res, next) => {
       });
     }
 
-    // 2FA check — if enabled, issue a short-lived challenge token instead of full tokens
-    if (user.totpEnabled) {
+    // 2FA check — if any method is enabled, issue a challenge token
+    const twoFaMethods = [];
+    if (user.totpEnabled) twoFaMethods.push('totp');
+    if (user.emailOtpEnabled) twoFaMethods.push('email_otp');
+    if (user.smsOtpEnabled && user.phone) twoFaMethods.push('sms_otp');
+
+    if (twoFaMethods.length > 0) {
       const challengeToken = crypto.randomBytes(32).toString('hex');
       user.totpChallengeToken = challengeToken;
-      user.totpChallengeExpires = Date.now() + 5 * 60 * 1000; // 5 min
+      user.totpChallengeExpires = Date.now() + 10 * 60 * 1000; // 10 min
+
+      // Pre-send email/SMS OTP so user doesn't have to request it separately
+      const otp = generateOtp();
+      const otpHash = hashOtp(otp);
+      const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+
+      if (user.emailOtpEnabled) {
+        user.emailOtp = otpHash;
+        user.emailOtpExpires = otpExpires;
+        sendEmailOtp(user.email, otp, user.firstName).catch(console.error);
+      }
+      if (user.smsOtpEnabled && user.phone) {
+        user.smsOtp = otpHash;
+        user.smsOtpExpires = otpExpires;
+        sendSmsOtp(user.phone, otp).catch(console.error);
+      }
+
       await user.save();
       return res.json({
         requiresTwoFactor: true,
         challengeToken,
-        message: "2FA required. Please verify with your authenticator app.",
+        availableMethods: twoFaMethods,
+        message: "2FA required.",
       });
     }
 
@@ -511,16 +535,17 @@ const disable2FA = async (req, res, next) => {
 };
 
 // ─── POST /api/auth/2fa/challenge ─────────────────────────────────────────────
-// Complete the 2FA login challenge with a TOTP code or backup code
+// Complete the 2FA login challenge — supports totp, email_otp, sms_otp, backup_code
 const challenge2FA = async (req, res, next) => {
   try {
-    const { challengeToken, token, backupCode } = req.body;
+    const { challengeToken, method = 'totp', code, backupCode } = req.body;
     if (!challengeToken) return res.status(400).json({ message: 'challengeToken is required.' });
+    if (!code && !backupCode) return res.status(400).json({ message: 'code or backupCode is required.' });
 
     const user = await User.findOne({
       totpChallengeToken: challengeToken,
       totpChallengeExpires: { $gt: Date.now() },
-    }).select('+totpSecret +backupCodes +totpChallengeToken +totpChallengeExpires');
+    }).select('+totpSecret +backupCodes +totpChallengeToken +totpChallengeExpires +emailOtp +emailOtpExpires +smsOtp +smsOtpExpires');
 
     if (!user) {
       return res.status(400).json({ message: 'Invalid or expired 2FA challenge.' });
@@ -528,18 +553,42 @@ const challenge2FA = async (req, res, next) => {
 
     let authorized = false;
 
-    if (token) {
+    if (backupCode) {
+      const idx = (user.backupCodes || []).indexOf(backupCode.toUpperCase().trim());
+      if (idx !== -1) {
+        authorized = true;
+        user.backupCodes.splice(idx, 1);
+      }
+    } else if (method === 'totp') {
       authorized = speakeasy.totp.verify({
         secret: user.totpSecret,
         encoding: 'base32',
-        token,
+        token: code,
         window: 1,
       });
-    } else if (backupCode) {
-      const idx = user.backupCodes.indexOf(backupCode.toUpperCase().trim());
-      if (idx !== -1) {
-        authorized = true;
-        user.backupCodes.splice(idx, 1); // each backup code is single-use
+    } else if (method === 'email_otp') {
+      if (!user.emailOtp || !user.emailOtpExpires) {
+        return res.status(400).json({ message: 'No email OTP pending. Request a new one.' });
+      }
+      if (user.emailOtpExpires < new Date()) {
+        return res.status(400).json({ message: 'Email OTP has expired. Request a new one.' });
+      }
+      authorized = verifyHashedOtp(code, user.emailOtp);
+      if (authorized) {
+        user.emailOtp = undefined;
+        user.emailOtpExpires = undefined;
+      }
+    } else if (method === 'sms_otp') {
+      if (!user.smsOtp || !user.smsOtpExpires) {
+        return res.status(400).json({ message: 'No SMS OTP pending. Request a new one.' });
+      }
+      if (user.smsOtpExpires < new Date()) {
+        return res.status(400).json({ message: 'SMS OTP has expired. Request a new one.' });
+      }
+      authorized = verifyHashedOtp(code, user.smsOtp);
+      if (authorized) {
+        user.smsOtp = undefined;
+        user.smsOtpExpires = undefined;
       }
     }
 
@@ -547,7 +596,6 @@ const challenge2FA = async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid 2FA code.' });
     }
 
-    // Clear challenge fields
     user.totpChallengeToken = undefined;
     user.totpChallengeExpires = undefined;
 
@@ -556,6 +604,172 @@ const challenge2FA = async (req, res, next) => {
     await user.save();
 
     return res.json({ message: 'Login successful', user, accessToken, refreshToken });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── POST /api/auth/2fa/challenge/resend ──────────────────────────────────────
+// Resend OTP during login challenge (email or SMS)
+const resend2FAOtp = async (req, res, next) => {
+  try {
+    const { challengeToken, method } = req.body;
+    if (!challengeToken || !method) {
+      return res.status(400).json({ message: 'challengeToken and method are required.' });
+    }
+
+    const user = await User.findOne({
+      totpChallengeToken: challengeToken,
+      totpChallengeExpires: { $gt: Date.now() },
+    }).select('+totpChallengeToken +totpChallengeExpires +emailOtp +emailOtpExpires +smsOtp +smsOtpExpires');
+
+    if (!user) return res.status(400).json({ message: 'Invalid or expired challenge.' });
+
+    const otp = generateOtp();
+    const otpHash = hashOtp(otp);
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+
+    if (method === 'email_otp') {
+      if (!user.emailOtpEnabled) return res.status(400).json({ message: 'Email OTP not enabled.' });
+      user.emailOtp = otpHash;
+      user.emailOtpExpires = otpExpires;
+      await user.save();
+      await sendEmailOtp(user.email, otp, user.firstName);
+      return res.json({ message: 'OTP resent to your email.' });
+    }
+
+    if (method === 'sms_otp') {
+      if (!user.smsOtpEnabled || !user.phone) return res.status(400).json({ message: 'SMS OTP not enabled.' });
+      user.smsOtp = otpHash;
+      user.smsOtpExpires = otpExpires;
+      await user.save();
+      await sendSmsOtp(user.phone, otp);
+      return res.json({ message: 'OTP resent to your phone.' });
+    }
+
+    return res.status(400).json({ message: 'Invalid method. Use email_otp or sms_otp.' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── POST /api/auth/2fa/email/setup ──────────────────────────────────────────
+// Send OTP to user's registered email; store hash for verification step
+const setupEmailOtp = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id).select('+emailOtp +emailOtpExpires');
+    if (user.emailOtpEnabled) {
+      return res.status(400).json({ message: 'Email 2FA is already enabled.' });
+    }
+
+    const otp = generateOtp();
+    user.emailOtp = hashOtp(otp);
+    user.emailOtpExpires = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+
+    await sendEmailOtp(user.email, otp, user.firstName);
+    return res.json({ message: `Verification code sent to ${user.email}.` });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── POST /api/auth/2fa/email/verify ─────────────────────────────────────────
+const verifyEmailOtp = async (req, res, next) => {
+  try {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ message: 'code is required.' });
+
+    const user = await User.findById(req.user._id).select('+emailOtp +emailOtpExpires');
+    if (!user.emailOtp) return res.status(400).json({ message: 'No pending email OTP. Call /2fa/email/setup first.' });
+    if (user.emailOtpExpires < new Date()) return res.status(400).json({ message: 'OTP expired. Request a new one.' });
+    if (!verifyHashedOtp(code, user.emailOtp)) return res.status(400).json({ message: 'Invalid code.' });
+
+    user.emailOtpEnabled = true;
+    user.emailOtp = undefined;
+    user.emailOtpExpires = undefined;
+    await user.save();
+
+    return res.json({ message: 'Email 2FA enabled.' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── POST /api/auth/2fa/email/disable ────────────────────────────────────────
+const disableEmailOtp = async (req, res, next) => {
+  try {
+    const { password } = req.body;
+    const user = await User.findById(req.user._id).select('+password');
+    if (!user.emailOtpEnabled) return res.status(400).json({ message: 'Email 2FA is not enabled.' });
+    if (!password || !(await user.comparePassword(password))) {
+      return res.status(401).json({ message: 'Incorrect password.' });
+    }
+    user.emailOtpEnabled = false;
+    await user.save();
+    return res.json({ message: 'Email 2FA disabled.' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── POST /api/auth/2fa/sms/setup ────────────────────────────────────────────
+const setupSmsOtp = async (req, res, next) => {
+  try {
+    const { phone } = req.body;
+    const user = await User.findById(req.user._id).select('+smsOtp +smsOtpExpires');
+    if (user.smsOtpEnabled) return res.status(400).json({ message: 'SMS 2FA is already enabled.' });
+
+    const targetPhone = phone || user.phone;
+    if (!targetPhone) return res.status(400).json({ message: 'A phone number is required.' });
+
+    const otp = generateOtp();
+    user.phone = targetPhone;
+    user.smsOtp = hashOtp(otp);
+    user.smsOtpExpires = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+
+    await sendSmsOtp(targetPhone, otp);
+    return res.json({ message: `Verification code sent to ${targetPhone}.` });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── POST /api/auth/2fa/sms/verify ───────────────────────────────────────────
+const verifySmsOtp = async (req, res, next) => {
+  try {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ message: 'code is required.' });
+
+    const user = await User.findById(req.user._id).select('+smsOtp +smsOtpExpires');
+    if (!user.smsOtp) return res.status(400).json({ message: 'No pending SMS OTP. Call /2fa/sms/setup first.' });
+    if (user.smsOtpExpires < new Date()) return res.status(400).json({ message: 'OTP expired. Request a new one.' });
+    if (!verifyHashedOtp(code, user.smsOtp)) return res.status(400).json({ message: 'Invalid code.' });
+
+    user.smsOtpEnabled = true;
+    user.smsOtp = undefined;
+    user.smsOtpExpires = undefined;
+    await user.save();
+
+    return res.json({ message: 'SMS 2FA enabled.' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── POST /api/auth/2fa/sms/disable ──────────────────────────────────────────
+const disableSmsOtp = async (req, res, next) => {
+  try {
+    const { password } = req.body;
+    const user = await User.findById(req.user._id).select('+password');
+    if (!user.smsOtpEnabled) return res.status(400).json({ message: 'SMS 2FA is not enabled.' });
+    if (!password || !(await user.comparePassword(password))) {
+      return res.status(401).json({ message: 'Incorrect password.' });
+    }
+    user.smsOtpEnabled = false;
+    await user.save();
+    return res.json({ message: 'SMS 2FA disabled.' });
   } catch (error) {
     next(error);
   }
@@ -577,4 +791,11 @@ export {
   verify2FA,
   disable2FA,
   challenge2FA,
+  resend2FAOtp,
+  setupEmailOtp,
+  verifyEmailOtp,
+  disableEmailOtp,
+  setupSmsOtp,
+  verifySmsOtp,
+  disableSmsOtp,
 };

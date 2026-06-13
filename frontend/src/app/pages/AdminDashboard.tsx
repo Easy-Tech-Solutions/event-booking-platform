@@ -12,8 +12,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import {
   LayoutDashboard, Users, Calendar, DollarSign, FileText, Search,
-  MoreVertical, Check, X, Tag, MessageSquare, Ticket, BookOpen,
-  ShieldCheck, Plus, Trash2, Edit2, Eye, ChevronDown,
+  MoreVertical, Tag, MessageSquare, Ticket, BookOpen,
+  ShieldCheck, Plus, Trash2, Edit2, Eye, ChevronDown, AlertTriangle,
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
 import apiClient from '../api/client';
@@ -32,6 +32,7 @@ export function AdminDashboard() {
     { id: 'blog', label: 'Blog', icon: BookOpen, path: '/admin/blog' },
     { id: 'roles', label: 'Roles & Permissions', icon: ShieldCheck, path: '/admin/roles' },
     { id: 'payouts', label: 'Payouts', icon: DollarSign, path: '/admin/payouts' },
+    { id: 'trust', label: 'Trust & Safety', icon: AlertTriangle, path: '/admin/trust' },
     { id: 'reports', label: 'Reports', icon: FileText, path: '/admin/reports' },
   ];
 
@@ -71,6 +72,7 @@ export function AdminDashboard() {
               <Route path="blog" element={<BlogManagement />} />
               <Route path="roles" element={<RolesPermissions />} />
               <Route path="payouts" element={<PayoutsManagement />} />
+              <Route path="trust" element={<TrustSafety />} />
               <Route path="reports" element={<Reports />} />
               <Route index element={<PlatformOverview />} />
             </Routes>
@@ -173,6 +175,11 @@ function UserManagement() {
     setUsers((prev) => prev.filter((u) => u._id !== userId));
   };
 
+  const handleVerifiedBadge = async (userId: string, grant: boolean) => {
+    await apiClient.patch(`/admin/users/${userId}/verified-badge`, { grant }).catch(() => null);
+    setUsers((prev) => prev.map((u) => u._id === userId ? { ...u, isVerifiedOrganizer: grant } : u));
+  };
+
   const roleColors: Record<string, string> = {
     admin: 'bg-red-100 text-red-700',
     superadmin: 'bg-purple-100 text-purple-700',
@@ -212,7 +219,12 @@ function UserManagement() {
             <TableBody>
               {users.map((user) => (
                 <TableRow key={user._id}>
-                  <TableCell className="font-medium">{user.firstName} {user.lastName}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-1">
+                      {user.firstName} {user.lastName}
+                      {user.isVerifiedOrganizer && <span title="Verified Organizer" className="text-blue-500 text-xs">✓</span>}
+                    </div>
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{user.email}</TableCell>
                   <TableCell><Badge className={roleColors[user.role] ?? 'bg-gray-100 text-gray-700'}>{user.role}</Badge></TableCell>
                   <TableCell><Badge className={user.isSuspended ? 'bg-red-100 text-red-700' : 'bg-[#004406]/10 text-[#004406]'}>{user.isSuspended ? 'Suspended' : 'Active'}</Badge></TableCell>
@@ -225,6 +237,11 @@ function UserManagement() {
                         <DropdownMenuItem onClick={() => handleRoleChange(user._id, 'support_agent')}>Make Support Agent</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleRoleChange(user._id, 'admin')}>Make Admin</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleRoleChange(user._id, 'attendee')}>Make Attendee</DropdownMenuItem>
+                        {user.role === 'organizer' && (
+                          user.isVerifiedOrganizer
+                            ? <DropdownMenuItem onClick={() => handleVerifiedBadge(user._id, false)}>Revoke Verified Badge</DropdownMenuItem>
+                            : <DropdownMenuItem onClick={() => handleVerifiedBadge(user._id, true)}>Grant Verified Badge</DropdownMenuItem>
+                        )}
                         {user.isSuspended
                           ? <DropdownMenuItem className="text-green-600" onClick={() => handleSuspend(user._id, false)}>Unsuspend</DropdownMenuItem>
                           : <DropdownMenuItem className="text-orange-600" onClick={() => handleSuspend(user._id, true)}>Suspend</DropdownMenuItem>
@@ -287,7 +304,12 @@ function EventModeration() {
             <TableBody>
               {events.map((event) => (
                 <TableRow key={event._id}>
-                  <TableCell><p className="font-medium max-w-[200px] truncate">{event.title}</p></TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      <p className="font-medium max-w-[200px] truncate">{event.title}</p>
+                      {event.isFlaggedForReview && <AlertTriangle className="w-3 h-3 text-orange-500 flex-shrink-0" title="Flagged for review" />}
+                    </div>
+                  </TableCell>
                   <TableCell className="text-sm">{event.organizer?.firstName} {event.organizer?.lastName}</TableCell>
                   <TableCell className="text-sm">{event.startDate ? new Date(event.startDate).toLocaleDateString() : 'TBD'}</TableCell>
                   <TableCell><Badge className="bg-[#004406]/10 text-[#004406]">{event.status}</Badge></TableCell>
@@ -445,11 +467,7 @@ function SupportTickets() {
       replyMessage: reply,
       status: 'in_progress',
     }).catch(() => null);
-    if (r) {
-      setSelected(r.data.ticket);
-      setReply('');
-      reload();
-    }
+    if (r) { setSelected(r.data.ticket); setReply(''); reload(); }
   };
 
   const handleStatusUpdate = async (id: string, status: string) => {
@@ -500,7 +518,6 @@ function SupportTickets() {
             </div>
           )}
         </Card>
-
         {selected ? (
           <Card className="p-4 flex flex-col gap-3">
             <div className="flex items-start justify-between">
@@ -530,14 +547,10 @@ function SupportTickets() {
             <div className="flex gap-2">
               <Textarea value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Write a reply…" className="min-h-[80px] text-sm" />
             </div>
-            <Button onClick={handleReply} className="bg-[#004406] hover:bg-[#003305] text-white" disabled={!reply.trim()}>
-              Send Reply
-            </Button>
+            <Button onClick={handleReply} className="bg-[#004406] hover:bg-[#003305] text-white" disabled={!reply.trim()}>Send Reply</Button>
           </Card>
         ) : (
-          <Card className="p-6 flex items-center justify-center text-muted-foreground">
-            Select a ticket to view details
-          </Card>
+          <Card className="p-6 flex items-center justify-center text-muted-foreground">Select a ticket to view details</Card>
         )}
       </div>
     </div>
@@ -559,32 +572,18 @@ function CategoriesManagement() {
       .catch(() => {})
       .finally(() => setIsLoading(false));
   };
-
   useEffect(() => { reload(); }, []);
 
   const handleSubmit = async () => {
     if (!form.name.trim()) return;
     try {
-      if (editingId) {
-        await apiClient.put(`/categories/${editingId}`, form);
-        setMsg('Category updated.');
-      } else {
-        await apiClient.post('/categories', form);
-        setMsg('Category created.');
-      }
-      setForm({ name: '', description: '', color: '#004406' });
-      setEditingId(null);
-      reload();
-    } catch (e: any) {
-      setMsg(e.response?.data?.message || 'Error saving category.');
-    }
+      if (editingId) { await apiClient.put(`/categories/${editingId}`, form); setMsg('Category updated.'); }
+      else { await apiClient.post('/categories', form); setMsg('Category created.'); }
+      setForm({ name: '', description: '', color: '#004406' }); setEditingId(null); reload();
+    } catch (e: any) { setMsg(e.response?.data?.message || 'Error saving category.'); }
   };
 
-  const handleEdit = (cat: any) => {
-    setEditingId(cat._id);
-    setForm({ name: cat.name, description: cat.description || '', color: cat.color || '#004406' });
-  };
-
+  const handleEdit = (cat: any) => { setEditingId(cat._id); setForm({ name: cat.name, description: cat.description || '', color: cat.color || '#004406' }); };
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this category?')) return;
     await apiClient.delete(`/categories/${id}`).catch(() => null);
@@ -600,31 +599,17 @@ function CategoriesManagement() {
         <Card className="p-6">
           <h3 className="font-semibold mb-4">{editingId ? 'Edit Category' : 'Add New Category'}</h3>
           <div className="space-y-3">
-            <div>
-              <Label>Name</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Category name" />
-            </div>
-            <div>
-              <Label>Description</Label>
-              <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Optional description" />
-            </div>
+            <div><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Category name" /></div>
+            <div><Label>Description</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Optional description" /></div>
             <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <Label>Color</Label>
-                <Input value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} placeholder="#004406" />
-              </div>
+              <div className="flex-1"><Label>Color</Label><Input value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} placeholder="#004406" /></div>
+              {/* eslint-disable-next-line react/forbid-component-props */}
               <div className="mt-6 w-10 h-10 rounded border" style={{ backgroundColor: form.color }} />
             </div>
             {msg && <p className="text-sm text-muted-foreground">{msg}</p>}
             <div className="flex gap-2">
-              <Button onClick={handleSubmit} className="bg-[#004406] hover:bg-[#003305] text-white">
-                {editingId ? 'Update' : 'Create'}
-              </Button>
-              {editingId && (
-                <Button variant="outline" onClick={() => { setEditingId(null); setForm({ name: '', description: '', color: '#004406' }); }}>
-                  Cancel
-                </Button>
-              )}
+              <Button onClick={handleSubmit} className="bg-[#004406] hover:bg-[#003305] text-white">{editingId ? 'Update' : 'Create'}</Button>
+              {editingId && <Button variant="outline" onClick={() => { setEditingId(null); setForm({ name: '', description: '', color: '#004406' }); }}>Cancel</Button>}
             </div>
           </div>
         </Card>
@@ -635,6 +620,7 @@ function CategoriesManagement() {
               {categories.map((cat) => (
                 <div key={cat._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-3">
+                    {/* eslint-disable-next-line react/forbid-component-props */}
                     <div className="w-4 h-4 rounded-full" style={{ backgroundColor: cat.color || '#888' }} />
                     <div>
                       <p className="font-medium text-sm">{cat.name}</p>
@@ -642,12 +628,8 @@ function CategoriesManagement() {
                     </div>
                   </div>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleEdit(cat)}>
-                      <Edit2 className="w-3 h-3" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-600" onClick={() => handleDelete(cat._id)}>
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleEdit(cat)}><Edit2 className="w-3 h-3" /></Button>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-600" onClick={() => handleDelete(cat._id)}><Trash2 className="w-3 h-3" /></Button>
                   </div>
                 </div>
               ))}
@@ -680,7 +662,6 @@ function BlogManagement() {
       .catch(() => {})
       .finally(() => setIsLoading(false));
   };
-
   useEffect(() => { reload(); }, [statusFilter]);
 
   const handleCoverUpload = async (file: File) => {
@@ -690,31 +671,20 @@ function BlogManagement() {
     try {
       const res = await apiClient.post('/upload?folder=blog', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       setForm((f) => ({ ...f, coverImage: res.data.url }));
-    } catch {
-      setMsg('Cover image upload failed.');
-    } finally {
-      setCoverUploading(false);
-    }
+    } catch { setMsg('Cover image upload failed.'); }
+    finally { setCoverUploading(false); }
   };
 
   const handleSubmit = async () => {
     if (!form.title.trim() || !form.content.trim()) { setMsg('Title and content are required.'); return; }
     try {
       const payload = { ...form, tags: form.tags ? form.tags.split(',').map((t: string) => t.trim()) : [] };
-      if (editingId) {
-        await apiClient.put(`/blog/${editingId}`, payload);
-        setMsg('Post updated.');
-      } else {
-        await apiClient.post('/blog', payload);
-        setMsg('Post created.');
-      }
-      setCreating(false);
-      setEditingId(null);
+      if (editingId) { await apiClient.put(`/blog/${editingId}`, payload); setMsg('Post updated.'); }
+      else { await apiClient.post('/blog', payload); setMsg('Post created.'); }
+      setCreating(false); setEditingId(null);
       setForm({ title: '', excerpt: '', content: '', category: '', coverImage: '', status: 'draft', tags: '' });
       reload();
-    } catch (e: any) {
-      setMsg(e.response?.data?.message || 'Error saving post.');
-    }
+    } catch (e: any) { setMsg(e.response?.data?.message || 'Error saving post.'); }
   };
 
   const handleEdit = (post: any) => {
@@ -744,8 +714,6 @@ function BlogManagement() {
               <div><Label>Category</Label><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="e.g. Technology" /></div>
               <div><Label>Tags (comma-separated)</Label><Input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="tag1, tag2" /></div>
             </div>
-
-            {/* Cover image upload */}
             <div>
               <Label className="mb-1.5 block">Cover Image</Label>
               <input
@@ -761,25 +729,18 @@ function BlogManagement() {
                 <div className="relative rounded-lg overflow-hidden aspect-video max-h-48 bg-gray-100 group">
                   <img src={form.coverImage} alt="Cover" className="w-full h-full object-cover" />
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => coverInputRef.current?.click()} disabled={coverUploading}>
-                      {coverUploading ? 'Uploading…' : 'Change'}
-                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => coverInputRef.current?.click()} disabled={coverUploading}>{coverUploading ? 'Uploading…' : 'Change'}</Button>
                     <Button size="sm" variant="destructive" onClick={() => setForm((f) => ({ ...f, coverImage: '' }))}>Remove</Button>
                   </div>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => coverInputRef.current?.click()}
-                  disabled={coverUploading}
-                  className="w-full border-2 border-dashed border-gray-300 rounded-lg py-8 flex flex-col items-center gap-2 text-muted-foreground hover:border-[#004406]/50 hover:text-[#004406] transition-colors"
-                >
+                <button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverUploading}
+                  className="w-full border-2 border-dashed border-gray-300 rounded-lg py-8 flex flex-col items-center gap-2 text-muted-foreground hover:border-[#004406]/50 hover:text-[#004406] transition-colors">
                   <Plus className="w-6 h-6" />
                   <span className="text-sm">{coverUploading ? 'Uploading…' : 'Upload cover image'}</span>
                 </button>
               )}
             </div>
-
             <div>
               <Label>Status</Label>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
@@ -792,21 +753,12 @@ function BlogManagement() {
               </Select>
             </div>
           </Card>
-
           <Card className="p-6">
             <Label className="mb-2 block">Content</Label>
-            <RichEditor
-              value={form.content}
-              onChange={(html) => setForm((f) => ({ ...f, content: html }))}
-              placeholder="Write your blog post here…"
-              minHeight={360}
-            />
+            <RichEditor value={form.content} onChange={(html) => setForm((f) => ({ ...f, content: html }))} placeholder="Write your blog post here…" minHeight={360} />
           </Card>
-
           {msg && <p className="text-sm text-muted-foreground">{msg}</p>}
-          <Button onClick={handleSubmit} className="bg-[#004406] hover:bg-[#003305] text-white">
-            {editingId ? 'Update Post' : 'Create Post'}
-          </Button>
+          <Button onClick={handleSubmit} className="bg-[#004406] hover:bg-[#003305] text-white">{editingId ? 'Update Post' : 'Create Post'}</Button>
         </div>
       </div>
     );
@@ -826,9 +778,7 @@ function BlogManagement() {
               <SelectItem value="archived">Archived</SelectItem>
             </SelectContent>
           </Select>
-          <Button onClick={() => setCreating(true)} className="bg-[#004406] hover:bg-[#003305] text-white">
-            <Plus className="w-4 h-4 mr-1" /> New Post
-          </Button>
+          <Button onClick={() => setCreating(true)} className="bg-[#004406] hover:bg-[#003305] text-white"><Plus className="w-4 h-4 mr-1" /> New Post</Button>
         </div>
       </div>
       <Card className="p-6">
@@ -842,15 +792,9 @@ function BlogManagement() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge className={post.status === 'published' ? 'bg-[#004406]/10 text-[#004406]' : 'bg-gray-100 text-gray-600'}>{post.status}</Badge>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleEdit(post)}>
-                    <Edit2 className="w-3 h-3" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => navigate(`/blog/${post.slug}`)}>
-                    <Eye className="w-3 h-3" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-600" onClick={() => handleDelete(post._id)}>
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleEdit(post)}><Edit2 className="w-3 h-3" /></Button>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => navigate(`/blog/${post.slug}`)}><Eye className="w-3 h-3" /></Button>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-600" onClick={() => handleDelete(post._id)}><Trash2 className="w-3 h-3" /></Button>
                 </div>
               </div>
             ))}
@@ -864,7 +808,6 @@ function BlogManagement() {
 
 // ── Roles & Permissions ───────────────────────────────────────────────────────
 
-// Fallback used before API loads — keeps checkboxes usable immediately
 const FALLBACK_PERMISSIONS = [
   { key: 'view_users', label: 'View Users', group: 'Users', description: '' },
   { key: 'edit_users', label: 'Edit Users', group: 'Users', description: '' },
@@ -941,7 +884,7 @@ function PermissionCheckboxList({
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 pl-4">
               {groupPerms.map(({ key, label, description }) => (
-                <label key={key} className="flex items-start gap-1.5 cursor-pointer group">
+                <label key={key} className="flex items-start gap-1.5 cursor-pointer">
                   <input type="checkbox" checked={selected.includes(key)} onChange={() => toggle(key)} className="rounded mt-0.5" />
                   <div>
                     <span className="text-xs font-medium">{label}</span>
@@ -959,8 +902,6 @@ function PermissionCheckboxList({
 
 function RolesPermissions() {
   const [activeTab, setActiveTab] = useState<'custom' | 'system' | 'permissions' | 'assign'>('custom');
-
-  // ── Shared: DB permissions list ───────────────────────────────────────────────
   const [allPerms, setAllPerms] = useState(FALLBACK_PERMISSIONS);
 
   const reloadPerms = () => {
@@ -970,7 +911,6 @@ function RolesPermissions() {
   };
   useEffect(() => { reloadPerms(); }, []);
 
-  // ── Custom Roles ──────────────────────────────────────────────────────────────
   const [roles, setRoles] = useState<any[]>([]);
   const [rolesLoading, setRolesLoading] = useState(true);
   const [editingRole, setEditingRole] = useState<any | null>(null);
@@ -988,33 +928,15 @@ function RolesPermissions() {
   };
   useEffect(() => { reloadRoles(); }, []);
 
-  const openNewRole = () => {
-    setEditingRole(null);
-    setRoleForm({ name: '', description: '', permissions: [] });
-    setRoleMsg('');
-    setShowRoleForm(true);
-  };
-  const openEditRole = (role: any, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingRole(role);
-    setRoleForm({ name: role.name, description: role.description || '', permissions: role.permissions || [] });
-    setRoleMsg('');
-    setShowRoleForm(true);
-  };
+  const openNewRole = () => { setEditingRole(null); setRoleForm({ name: '', description: '', permissions: [] }); setRoleMsg(''); setShowRoleForm(true); };
+  const openEditRole = (role: any, e: React.MouseEvent) => { e.stopPropagation(); setEditingRole(role); setRoleForm({ name: role.name, description: role.description || '', permissions: role.permissions || [] }); setRoleMsg(''); setShowRoleForm(true); };
   const handleRoleSave = async () => {
     if (!roleForm.name.trim()) { setRoleMsg('Role name is required.'); return; }
     try {
-      if (editingRole) {
-        await apiClient.put(`/admin/custom-roles/${editingRole._id}`, roleForm);
-      } else {
-        await apiClient.post('/admin/custom-roles', roleForm);
-      }
-      setShowRoleForm(false);
-      setEditingRole(null);
-      reloadRoles();
-    } catch (e: any) {
-      setRoleMsg(e.response?.data?.message || 'Error saving role.');
-    }
+      if (editingRole) { await apiClient.put(`/admin/custom-roles/${editingRole._id}`, roleForm); }
+      else { await apiClient.post('/admin/custom-roles', roleForm); }
+      setShowRoleForm(false); setEditingRole(null); reloadRoles();
+    } catch (e: any) { setRoleMsg(e.response?.data?.message || 'Error saving role.'); }
   };
   const handleRoleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1023,10 +945,8 @@ function RolesPermissions() {
     reloadRoles();
   };
 
-  // ── System Roles ──────────────────────────────────────────────────────────────
   const [expandedSysRole, setExpandedSysRole] = useState<string | null>(null);
 
-  // ── Permissions Management ────────────────────────────────────────────────────
   const [permFilter, setPermFilter] = useState('');
   const [showPermForm, setShowPermForm] = useState(false);
   const [editingPerm, setEditingPerm] = useState<any | null>(null);
@@ -1034,23 +954,12 @@ function RolesPermissions() {
   const [permMsg, setPermMsg] = useState('');
 
   const handlePermSave = async () => {
-    if (!permForm.key.trim() || !permForm.label.trim() || !permForm.group.trim()) {
-      setPermMsg('Key, label, and group are required.'); return;
-    }
+    if (!permForm.key.trim() || !permForm.label.trim() || !permForm.group.trim()) { setPermMsg('Key, label, and group are required.'); return; }
     try {
-      if (editingPerm) {
-        await apiClient.put(`/admin/permissions/${editingPerm._id}`, permForm);
-      } else {
-        await apiClient.post('/admin/permissions', permForm);
-      }
-      setShowPermForm(false);
-      setEditingPerm(null);
-      setPermForm({ key: '', label: '', description: '', group: '' });
-      setPermMsg('');
-      reloadPerms();
-    } catch (e: any) {
-      setPermMsg(e.response?.data?.message || 'Error saving permission.');
-    }
+      if (editingPerm) { await apiClient.put(`/admin/permissions/${editingPerm._id}`, permForm); }
+      else { await apiClient.post('/admin/permissions', permForm); }
+      setShowPermForm(false); setEditingPerm(null); setPermForm({ key: '', label: '', description: '', group: '' }); setPermMsg(''); reloadPerms();
+    } catch (e: any) { setPermMsg(e.response?.data?.message || 'Error saving permission.'); }
   };
   const handlePermDelete = async (perm: any) => {
     if (perm.isSystem) return;
@@ -1061,11 +970,9 @@ function RolesPermissions() {
   const openEditPerm = (perm: any) => {
     setEditingPerm(perm);
     setPermForm({ key: perm.key, label: perm.label, description: perm.description || '', group: perm.group });
-    setPermMsg('');
-    setShowPermForm(true);
+    setPermMsg(''); setShowPermForm(true);
   };
 
-  // ── Assign to User ────────────────────────────────────────────────────────────
   const [userSearch, setUserSearch] = useState('');
   const [userResults, setUserResults] = useState<any[]>([]);
   const [selectedUser, setSelectedUser] = useState<any>(null);
@@ -1082,23 +989,14 @@ function RolesPermissions() {
       .catch(() => {})
       .finally(() => setUserLoading(false));
   };
-  const selectUser = (u: any) => {
-    setSelectedUser(u);
-    setSelectedRole(u.customRole?._id || u.customRole || '');
-    setCustomPerms(u.customPermissions || []);
-    setAssignMsg('');
-  };
+  const selectUser = (u: any) => { setSelectedUser(u); setSelectedRole(u.customRole?._id || u.customRole || ''); setCustomPerms(u.customPermissions || []); setAssignMsg(''); };
   const handleAssignRole = async () => {
     if (!selectedUser) return;
     try {
       await apiClient.patch(`/admin/users/${selectedUser._id}/custom-role`, { customRoleId: selectedRole || null });
       await apiClient.patch(`/admin/users/${selectedUser._id}/permissions`, { customPermissions: customPerms });
       setAssignMsg('Saved.');
-      setUserResults((prev) => prev.map((u) => u._id === selectedUser._id
-        ? { ...u, customRole: selectedRole || null, customPermissions: customPerms } : u));
-    } catch (e: any) {
-      setAssignMsg(e.response?.data?.message || 'Error saving.');
-    }
+    } catch (e: any) { setAssignMsg(e.response?.data?.message || 'Error saving.'); }
   };
 
   const TABS = [
@@ -1114,74 +1012,48 @@ function RolesPermissions() {
         <h2 className="text-2xl font-bold">Roles & Permissions</h2>
         <p className="text-muted-foreground text-sm">Manage roles, define permissions, and assign them to users</p>
       </div>
-
       <div className="flex flex-wrap gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
         {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${activeTab === tab.id ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
-          >
+          <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
+            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${activeTab === tab.id ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
             {tab.label}
           </button>
         ))}
       </div>
 
-      {/* ── Custom Roles Tab ── */}
       {activeTab === 'custom' && (
         <div>
           {showRoleForm ? (
             <Card className="p-6 mb-4">
               <h3 className="font-semibold mb-4">{editingRole ? `Edit "${editingRole.name}"` : 'New Custom Role'}</h3>
               <div className="space-y-4">
-                <div>
-                  <Label>Role Name</Label>
-                  <Input value={roleForm.name} onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value })} placeholder="e.g. Content Moderator" />
-                </div>
-                <div>
-                  <Label>Description</Label>
-                  <Input value={roleForm.description} onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })} placeholder="What can this role do?" />
-                </div>
+                <div><Label>Role Name</Label><Input value={roleForm.name} onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value })} placeholder="e.g. Content Moderator" /></div>
+                <div><Label>Description</Label><Input value={roleForm.description} onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })} placeholder="What can this role do?" /></div>
                 <div>
                   <Label className="mb-2 block">Permissions</Label>
-                  <PermissionCheckboxList
-                    selected={roleForm.permissions}
-                    onChange={(perms) => setRoleForm({ ...roleForm, permissions: perms })}
-                    allPermissions={allPerms}
-                  />
+                  <PermissionCheckboxList selected={roleForm.permissions} onChange={(perms) => setRoleForm({ ...roleForm, permissions: perms })} allPermissions={allPerms} />
                 </div>
                 {roleMsg && <p className="text-sm text-red-600">{roleMsg}</p>}
                 <div className="flex gap-2 pt-2">
-                  <Button onClick={handleRoleSave} className="bg-[#004406] hover:bg-[#003305] text-white">
-                    {editingRole ? 'Update Role' : 'Create Role'}
-                  </Button>
+                  <Button onClick={handleRoleSave} className="bg-[#004406] hover:bg-[#003305] text-white">{editingRole ? 'Update Role' : 'Create Role'}</Button>
                   <Button variant="outline" onClick={() => { setShowRoleForm(false); setRoleMsg(''); }}>Cancel</Button>
                 </div>
               </div>
             </Card>
           ) : (
             <div className="flex justify-end mb-4">
-              <Button onClick={openNewRole} className="bg-[#004406] hover:bg-[#003305] text-white">
-                <Plus className="w-4 h-4 mr-1" /> New Role
-              </Button>
+              <Button onClick={openNewRole} className="bg-[#004406] hover:bg-[#003305] text-white"><Plus className="w-4 h-4 mr-1" /> New Role</Button>
             </div>
           )}
-
-          {rolesLoading ? (
-            <div className="h-24 bg-gray-100 animate-pulse rounded" />
-          ) : roles.length === 0 ? (
-            <Card className="p-8 text-center text-muted-foreground">No custom roles yet. Create one to get started.</Card>
+          {rolesLoading ? <div className="h-24 bg-gray-100 animate-pulse rounded" /> : roles.length === 0 ? (
+            <Card className="p-8 text-center text-muted-foreground">No custom roles yet.</Card>
           ) : (
             <div className="space-y-2">
               {roles.map((role) => {
                 const expanded = expandedRole === role._id;
                 return (
                   <Card key={role._id} className="overflow-hidden">
-                    <div
-                      className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors"
-                      onClick={() => setExpandedRole(expanded ? null : role._id)}
-                    >
+                    <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50" onClick={() => setExpandedRole(expanded ? null : role._id)}>
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         <ChevronDown className={`w-4 h-4 text-muted-foreground flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
                         <div className="min-w-0">
@@ -1195,29 +1067,19 @@ function RolesPermissions() {
                       </div>
                       {!role.isSystem && (
                         <div className="flex gap-1 flex-shrink-0 ml-2">
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={(e) => openEditRole(role, e)}>
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500" onClick={(e) => handleRoleDelete(role._id, e)}>
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={(e) => openEditRole(role, e)}><Edit2 className="w-3.5 h-3.5" /></Button>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500" onClick={(e) => handleRoleDelete(role._id, e)}><Trash2 className="w-3.5 h-3.5" /></Button>
                         </div>
                       )}
                     </div>
                     {expanded && (
                       <div className="px-4 pb-4 border-t bg-gray-50/50">
                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-3 mb-2">Permissions</p>
-                        {role.permissions.length === 0 ? (
-                          <p className="text-xs text-muted-foreground">No permissions assigned.</p>
-                        ) : (
+                        {role.permissions.length === 0 ? <p className="text-xs text-muted-foreground">No permissions assigned.</p> : (
                           <div className="flex flex-wrap gap-1.5">
                             {role.permissions.map((pKey: string) => {
                               const meta = allPerms.find((p) => p.key === pKey);
-                              return (
-                                <span key={pKey} title={meta?.description || pKey} className="text-xs bg-white border rounded px-2 py-0.5 font-mono">
-                                  {meta?.label || pKey}
-                                </span>
-                              );
+                              return <span key={pKey} title={meta?.description || pKey} className="text-xs bg-white border rounded px-2 py-0.5 font-mono">{meta?.label || pKey}</span>;
                             })}
                           </div>
                         )}
@@ -1231,7 +1093,6 @@ function RolesPermissions() {
         </div>
       )}
 
-      {/* ── System Roles Tab ── */}
       {activeTab === 'system' && (
         <div className="space-y-2">
           {Object.entries(SYSTEM_ROLE_DESCRIPTIONS).map(([roleName, description]) => {
@@ -1239,19 +1100,14 @@ function RolesPermissions() {
             const expanded = expandedSysRole === roleName;
             return (
               <Card key={roleName} className="overflow-hidden">
-                <div
-                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors"
-                  onClick={() => setExpandedSysRole(expanded ? null : roleName)}
-                >
+                <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50" onClick={() => setExpandedSysRole(expanded ? null : roleName)}>
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <ChevronDown className={`w-4 h-4 text-muted-foreground flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
                     <div>
                       <div className="flex items-center gap-2">
                         <p className="font-semibold capitalize">{roleName.replace('_', ' ')}</p>
                         <Badge variant="outline" className="text-xs">System</Badge>
-                        <Badge variant="secondary" className="text-xs">
-                          {roleName === 'superadmin' ? 'All' : perms.length} perms
-                        </Badge>
+                        <Badge variant="secondary" className="text-xs">{roleName === 'superadmin' ? 'All' : perms.length} perms</Badge>
                       </div>
                       <p className="text-xs text-muted-foreground">{description}</p>
                     </div>
@@ -1263,23 +1119,14 @@ function RolesPermissions() {
                     {roleName === 'superadmin' ? (
                       <p className="text-xs text-[#004406] font-medium">Unrestricted — all permissions granted automatically.</p>
                     ) : perms.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">No permissions (attendees / organizers manage their own content).</p>
+                      <p className="text-xs text-muted-foreground">No permissions.</p>
                     ) : (
                       <div className="flex flex-wrap gap-1.5">
                         {perms.map((pKey) => {
                           const meta = allPerms.find((p) => p.key === pKey);
-                          return (
-                            <span key={pKey} title={meta?.description || pKey} className="text-xs bg-white border rounded px-2 py-0.5 font-mono">
-                              {meta?.label || pKey}
-                            </span>
-                          );
+                          return <span key={pKey} title={meta?.description || pKey} className="text-xs bg-white border rounded px-2 py-0.5 font-mono">{meta?.label || pKey}</span>;
                         })}
                       </div>
-                    )}
-                    {roleName !== 'superadmin' && roleName !== 'attendee' && (
-                      <p className="text-xs text-muted-foreground mt-3">
-                        To override a system role's permissions for specific users, create a Custom Role and assign it to them.
-                      </p>
                     )}
                   </div>
                 )}
@@ -1289,7 +1136,6 @@ function RolesPermissions() {
         </div>
       )}
 
-      {/* ── Permissions Tab ── */}
       {activeTab === 'permissions' && (
         <div>
           {showPermForm ? (
@@ -1299,17 +1145,9 @@ function RolesPermissions() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Key <span className="text-muted-foreground text-xs">(snake_case)</span></Label>
-                    <Input
-                      value={permForm.key}
-                      onChange={(e) => setPermForm({ ...permForm, key: e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') })}
-                      placeholder="e.g. manage_inventory"
-                      disabled={!!editingPerm}
-                    />
+                    <Input value={permForm.key} onChange={(e) => setPermForm({ ...permForm, key: e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') })} placeholder="e.g. manage_inventory" disabled={!!editingPerm} />
                   </div>
-                  <div>
-                    <Label>Label</Label>
-                    <Input value={permForm.label} onChange={(e) => setPermForm({ ...permForm, label: e.target.value })} placeholder="e.g. Manage Inventory" />
-                  </div>
+                  <div><Label>Label</Label><Input value={permForm.label} onChange={(e) => setPermForm({ ...permForm, label: e.target.value })} placeholder="e.g. Manage Inventory" /></div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -1317,39 +1155,26 @@ function RolesPermissions() {
                     <Input value={permForm.group} onChange={(e) => setPermForm({ ...permForm, group: e.target.value })} placeholder="e.g. Inventory" />
                     <p className="text-xs text-muted-foreground mt-0.5">Which part of the app this controls</p>
                   </div>
-                  <div>
-                    <Label>Description</Label>
-                    <Input value={permForm.description} onChange={(e) => setPermForm({ ...permForm, description: e.target.value })} placeholder="What this permission allows" />
-                  </div>
+                  <div><Label>Description</Label><Input value={permForm.description} onChange={(e) => setPermForm({ ...permForm, description: e.target.value })} placeholder="What this permission allows" /></div>
                 </div>
                 {permMsg && <p className="text-sm text-red-600">{permMsg}</p>}
                 <div className="flex gap-2">
-                  <Button onClick={handlePermSave} className="bg-[#004406] hover:bg-[#003305] text-white">
-                    {editingPerm ? 'Update' : 'Create'}
-                  </Button>
+                  <Button onClick={handlePermSave} className="bg-[#004406] hover:bg-[#003305] text-white">{editingPerm ? 'Update' : 'Create'}</Button>
                   <Button variant="outline" onClick={() => { setShowPermForm(false); setEditingPerm(null); setPermMsg(''); }}>Cancel</Button>
                 </div>
               </div>
             </Card>
           ) : (
             <div className="flex items-center justify-between mb-4">
-              <Input
-                placeholder="Filter permissions…"
-                value={permFilter}
-                onChange={(e) => setPermFilter(e.target.value)}
-                className="max-w-xs"
-              />
+              <Input placeholder="Filter permissions…" value={permFilter} onChange={(e) => setPermFilter(e.target.value)} className="max-w-xs" />
               <Button onClick={() => { setShowPermForm(true); setEditingPerm(null); setPermForm({ key: '', label: '', description: '', group: '' }); }} className="bg-[#004406] hover:bg-[#003305] text-white">
                 <Plus className="w-4 h-4 mr-1" /> New Permission
               </Button>
             </div>
           )}
-
           {!showPermForm && (() => {
             const groups = Array.from(new Set(allPerms.map((p) => p.group)));
-            const filtered = allPerms.filter((p) =>
-              !permFilter || p.key.includes(permFilter.toLowerCase()) || p.label.toLowerCase().includes(permFilter.toLowerCase())
-            );
+            const filtered = allPerms.filter((p) => !permFilter || p.key.includes(permFilter.toLowerCase()) || p.label.toLowerCase().includes(permFilter.toLowerCase()));
             return (
               <div className="space-y-4">
                 {groups.filter((g) => filtered.some((p) => p.group === g)).map((group) => (
@@ -1367,22 +1192,8 @@ function RolesPermissions() {
                             {perm.description && <p className="text-xs text-muted-foreground mt-0.5">{perm.description}</p>}
                           </div>
                           <div className="flex gap-1 flex-shrink-0">
-                            <Button
-                              variant="ghost" size="sm" className="h-7 w-7 p-0"
-                              onClick={() => openEditPerm(perm)}
-                              disabled={perm.isSystem}
-                              title={perm.isSystem ? 'System permissions cannot be edited' : 'Edit'}
-                            >
-                              <Edit2 className="w-3 h-3" />
-                            </Button>
-                            <Button
-                              variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500"
-                              onClick={() => handlePermDelete(perm)}
-                              disabled={perm.isSystem}
-                              title={perm.isSystem ? 'System permissions cannot be deleted' : 'Delete'}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => openEditPerm(perm)} disabled={perm.isSystem} title={perm.isSystem ? 'System permissions cannot be edited' : 'Edit'}><Edit2 className="w-3 h-3" /></Button>
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500" onClick={() => handlePermDelete(perm)} disabled={perm.isSystem} title={perm.isSystem ? 'System permissions cannot be deleted' : 'Delete'}><Trash2 className="w-3 h-3" /></Button>
                           </div>
                         </div>
                       ))}
@@ -1395,7 +1206,6 @@ function RolesPermissions() {
         </div>
       )}
 
-      {/* ── Assign to User Tab ── */}
       {activeTab === 'assign' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="space-y-4">
@@ -1403,9 +1213,7 @@ function RolesPermissions() {
               <p className="text-sm font-medium mb-2">Search user</p>
               <div className="flex gap-2">
                 <Input placeholder="Name or email…" value={userSearch} onChange={(e) => setUserSearch(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && searchUsers()} />
-                <Button onClick={searchUsers} variant="outline" disabled={userLoading}>
-                  {userLoading ? '…' : <Search className="w-4 h-4" />}
-                </Button>
+                <Button onClick={searchUsers} variant="outline" disabled={userLoading}>{userLoading ? '…' : <Search className="w-4 h-4" />}</Button>
               </div>
             </Card>
             {userResults.length > 0 && (
@@ -1414,17 +1222,13 @@ function RolesPermissions() {
                   {userResults.map((u) => (
                     <div key={u._id} onClick={() => selectUser(u)} className={`p-3 cursor-pointer hover:bg-gray-50 ${selectedUser?._id === u._id ? 'bg-[#004406]/5 border-l-4 border-[#004406]' : ''}`}>
                       <p className="font-medium text-sm">{u.firstName} {u.lastName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {u.email} · <span className="font-medium">{u.role}</span>
-                        {u.customRole && <span className="text-[#004406]"> + {typeof u.customRole === 'object' ? u.customRole.name : 'custom role'}</span>}
-                      </p>
+                      <p className="text-xs text-muted-foreground">{u.email} · <span className="font-medium">{u.role}</span></p>
                     </div>
                   ))}
                 </div>
               </Card>
             )}
           </div>
-
           {selectedUser ? (
             <Card className="p-5 space-y-4">
               <div>
@@ -1434,28 +1238,22 @@ function RolesPermissions() {
               <div>
                 <Label className="mb-1.5 block">Custom Role</Label>
                 <Select value={selectedRole} onValueChange={setSelectedRole}>
-                  <SelectTrigger><SelectValue placeholder="No custom role (use system role)" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="No custom role" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="">No custom role</SelectItem>
-                    {roles.map((r) => (
-                      <SelectItem key={r._id} value={r._id}>{r.name} ({r.permissions.length} perms)</SelectItem>
-                    ))}
+                    {roles.map((r) => <SelectItem key={r._id} value={r._id}>{r.name} ({r.permissions.length} perms)</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground mt-1">When set, replaces the system role's permission set.</p>
               </div>
               <div>
                 <Label className="mb-1.5 block">Additional Permissions</Label>
-                <p className="text-xs text-muted-foreground mb-2">Stack on top of the role's permissions.</p>
                 <PermissionCheckboxList selected={customPerms} onChange={setCustomPerms} allPermissions={allPerms} />
               </div>
               {assignMsg && <p className="text-sm text-[#004406]">{assignMsg}</p>}
               <Button onClick={handleAssignRole} className="bg-[#004406] hover:bg-[#003305] text-white w-full">Save</Button>
             </Card>
           ) : (
-            <Card className="p-6 flex items-center justify-center text-muted-foreground text-sm">
-              Search for a user to assign a role
-            </Card>
+            <Card className="p-6 flex items-center justify-center text-muted-foreground text-sm">Search for a user to assign a role</Card>
           )}
         </div>
       )}
@@ -1483,21 +1281,16 @@ function PayoutsManagement() {
       .catch(() => {})
       .finally(() => setIsLoading(false));
   };
-
   useEffect(() => { reload(); }, [period, statusFilter]);
 
   const handleCalculate = async () => {
-    setCalculating(true);
-    setMsg('');
+    setCalculating(true); setMsg('');
     try {
       const res = await apiClient.post('/admin/payouts/calculate', { period });
       setMsg(`Calculated ${res.data.count} payout(s) for ${res.data.period}.`);
       reload();
-    } catch (e: any) {
-      setMsg(e.response?.data?.message || 'Error calculating payouts.');
-    } finally {
-      setCalculating(false);
-    }
+    } catch (e: any) { setMsg(e.response?.data?.message || 'Error calculating payouts.'); }
+    finally { setCalculating(false); }
   };
 
   const handleStatusUpdate = async (id: string, status: string) => {
@@ -1505,11 +1298,8 @@ function PayoutsManagement() {
     try {
       await apiClient.patch(`/admin/payouts/${id}`, { status, notes: notesMap[id] });
       reload();
-    } catch (e: any) {
-      setMsg(e.response?.data?.message || 'Error updating payout.');
-    } finally {
-      setUpdatingId(null);
-    }
+    } catch (e: any) { setMsg(e.response?.data?.message || 'Error updating payout.'); }
+    finally { setUpdatingId(null); }
   };
 
   const STATUS_COLORS: Record<string, string> = {
@@ -1526,23 +1316,13 @@ function PayoutsManagement() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-bold">Organizer Payouts</h2>
-          <p className="text-muted-foreground text-sm">Calculate and track monthly payouts to event organizers</p>
-        </div>
+        <div><h2 className="text-2xl font-bold">Organizer Payouts</h2><p className="text-muted-foreground text-sm">Calculate and track monthly payouts to event organizers</p></div>
       </div>
-
-      {/* Controls */}
       <Card className="p-4 mb-6">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
             <Label className="text-sm">Period</Label>
-            <Input
-              type="month"
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-              className="w-40"
-            />
+            <Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} className="w-40" />
           </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
@@ -1554,14 +1334,10 @@ function PayoutsManagement() {
               <SelectItem value="failed">Failed</SelectItem>
             </SelectContent>
           </Select>
-          <Button onClick={handleCalculate} disabled={calculating} className="bg-[#004406] hover:bg-[#003305] text-white">
-            {calculating ? 'Calculating…' : 'Calculate Payouts'}
-          </Button>
+          <Button onClick={handleCalculate} disabled={calculating} className="bg-[#004406] hover:bg-[#003305] text-white">{calculating ? 'Calculating…' : 'Calculate Payouts'}</Button>
           {msg && <p className="text-sm text-muted-foreground">{msg}</p>}
         </div>
       </Card>
-
-      {/* Summary */}
       {payouts.length > 0 && (
         <div className="grid grid-cols-3 gap-4 mb-6">
           {[
@@ -1576,16 +1352,10 @@ function PayoutsManagement() {
           ))}
         </div>
       )}
-
-      {/* Payout list */}
       {isLoading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => <div key={i} className="h-20 bg-gray-100 animate-pulse rounded" />)}
-        </div>
+        <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-20 bg-gray-100 animate-pulse rounded" />)}</div>
       ) : payouts.length === 0 ? (
-        <Card className="p-8 text-center text-muted-foreground">
-          No payouts for this period. Click "Calculate Payouts" to compute from completed orders.
-        </Card>
+        <Card className="p-8 text-center text-muted-foreground">No payouts for this period. Click "Calculate Payouts" to compute from completed orders.</Card>
       ) : (
         <div className="space-y-3">
           {payouts.map((payout) => (
@@ -1594,9 +1364,7 @@ function PayoutsManagement() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <p className="font-semibold">{payout.organizer?.firstName} {payout.organizer?.lastName}</p>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[payout.status] || 'bg-gray-100'}`}>
-                      {payout.status}
-                    </span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[payout.status] || 'bg-gray-100'}`}>{payout.status}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">{payout.organizer?.email}</p>
                   <div className="flex gap-4 mt-2 text-sm">
@@ -1605,36 +1373,17 @@ function PayoutsManagement() {
                     <span>Net: <span className="font-medium text-[#004406]">${payout.netAmount.toFixed(2)}</span></span>
                     <span className="text-muted-foreground">{payout.events?.length || 0} event(s)</span>
                   </div>
-                  {payout.processedAt && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Processed {new Date(payout.processedAt).toLocaleDateString()} by {payout.processedBy?.firstName}
-                    </p>
-                  )}
+                  {payout.processedAt && <p className="text-xs text-muted-foreground mt-1">Processed {new Date(payout.processedAt).toLocaleDateString()} by {payout.processedBy?.firstName}</p>}
                 </div>
                 {payout.status !== 'paid' && (
                   <div className="flex flex-col gap-2 min-w-[200px]">
-                    <Input
-                      placeholder="Notes (optional)"
-                      value={notesMap[payout._id] || ''}
-                      onChange={(e) => setNotesMap((m) => ({ ...m, [payout._id]: e.target.value }))}
-                      className="text-xs h-8"
-                    />
+                    <Input placeholder="Notes (optional)" value={notesMap[payout._id] || ''} onChange={(e) => setNotesMap((m) => ({ ...m, [payout._id]: e.target.value }))} className="text-xs h-8" />
                     <div className="flex gap-1">
                       {payout.status === 'pending' && (
-                        <Button
-                          size="sm" variant="outline" className="flex-1 text-xs h-7"
-                          disabled={updatingId === payout._id}
-                          onClick={() => handleStatusUpdate(payout._id, 'processing')}
-                        >
-                          Mark Processing
-                        </Button>
+                        <Button size="sm" variant="outline" className="flex-1 text-xs h-7" disabled={updatingId === payout._id} onClick={() => handleStatusUpdate(payout._id, 'processing')}>Mark Processing</Button>
                       )}
                       {['pending', 'processing'].includes(payout.status) && (
-                        <Button
-                          size="sm" className="flex-1 text-xs h-7 bg-[#004406] hover:bg-[#003305] text-white"
-                          disabled={updatingId === payout._id}
-                          onClick={() => handleStatusUpdate(payout._id, 'paid')}
-                        >
+                        <Button size="sm" className="flex-1 text-xs h-7 bg-[#004406] hover:bg-[#003305] text-white" disabled={updatingId === payout._id} onClick={() => handleStatusUpdate(payout._id, 'paid')}>
                           {updatingId === payout._id ? '…' : 'Mark Paid'}
                         </Button>
                       )}
@@ -1650,7 +1399,248 @@ function PayoutsManagement() {
   );
 }
 
-// ── Reports ───────────────────────────────────────────────────────────────────
+// ── Trust & Safety ────────────────────────────────────────────────────────────
+function TrustSafety() {
+  const [activeTab, setActiveTab] = useState<'reports' | 'kyc'>('reports');
+
+  // ── Event Reports ─────────────────────────────────────────────────────────
+  const [reports, setReports] = useState<any[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(true);
+  const [reportStatusFilter, setReportStatusFilter] = useState('all');
+  const [selectedReport, setSelectedReport] = useState<any>(null);
+  const [reportNote, setReportNote] = useState('');
+  const [reportMsg, setReportMsg] = useState('');
+
+  const reloadReports = () => {
+    setReportsLoading(true);
+    apiClient.get('/admin/reports', { params: reportStatusFilter !== 'all' ? { status: reportStatusFilter } : {} })
+      .then((r) => setReports(r.data.reports || []))
+      .catch(() => {})
+      .finally(() => setReportsLoading(false));
+  };
+  useEffect(() => { if (activeTab === 'reports') reloadReports(); }, [reportStatusFilter, activeTab]);
+
+  const handleReportUpdate = async (id: string, status: string) => {
+    try {
+      await apiClient.patch(`/admin/reports/${id}`, { status, adminNote: reportNote });
+      setReportMsg('Report updated.');
+      setSelectedReport(null);
+      setReportNote('');
+      reloadReports();
+    } catch (e: any) { setReportMsg(e.response?.data?.message || 'Error updating report.'); }
+  };
+
+  const REPORT_STATUS_COLORS: Record<string, string> = {
+    pending: 'bg-yellow-100 text-yellow-800',
+    under_review: 'bg-blue-100 text-blue-800',
+    resolved: 'bg-green-100 text-green-800',
+    dismissed: 'bg-gray-100 text-gray-600',
+  };
+
+  // ── KYC Submissions ───────────────────────────────────────────────────────
+  const [kycs, setKycs] = useState<any[]>([]);
+  const [kycsLoading, setKycsLoading] = useState(true);
+  const [kycStatusFilter, setKycStatusFilter] = useState('all');
+  const [selectedKyc, setSelectedKyc] = useState<any>(null);
+  const [kycNote, setKycNote] = useState('');
+  const [kycMsg, setKycMsg] = useState('');
+
+  const reloadKycs = () => {
+    setKycsLoading(true);
+    apiClient.get('/admin/kyc', { params: kycStatusFilter !== 'all' ? { status: kycStatusFilter } : {} })
+      .then((r) => setKycs(r.data.submissions || []))
+      .catch(() => {})
+      .finally(() => setKycsLoading(false));
+  };
+  useEffect(() => { if (activeTab === 'kyc') reloadKycs(); }, [kycStatusFilter, activeTab]);
+
+  const handleKycUpdate = async (id: string, status: string) => {
+    try {
+      await apiClient.patch(`/admin/kyc/${id}`, { status, adminNote: kycNote });
+      setKycMsg(status === 'approved' ? 'KYC approved. Verified badge granted automatically.' : 'KYC updated.');
+      setSelectedKyc(null);
+      setKycNote('');
+      reloadKycs();
+    } catch (e: any) { setKycMsg(e.response?.data?.message || 'Error updating KYC.'); }
+  };
+
+  const KYC_STATUS_COLORS: Record<string, string> = {
+    pending: 'bg-yellow-100 text-yellow-800',
+    under_review: 'bg-blue-100 text-blue-800',
+    approved: 'bg-green-100 text-green-800',
+    rejected: 'bg-red-100 text-red-800',
+    requires_resubmission: 'bg-orange-100 text-orange-800',
+  };
+
+  return (
+    <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold">Trust & Safety</h2>
+        <p className="text-muted-foreground text-sm">Review flagged events, verify organizers, and manage KYC submissions</p>
+      </div>
+
+      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
+        {(['reports', 'kyc'] as const).map((tab) => (
+          <button key={tab} type="button" onClick={() => setActiveTab(tab)}
+            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${activeTab === tab ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
+            {tab === 'reports' ? 'Event Reports' : 'KYC Verification'}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'reports' && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm text-muted-foreground">{reports.length} report(s)</p>
+            <Select value={reportStatusFilter} onValueChange={setReportStatusFilter}>
+              <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="under_review">Under Review</SelectItem>
+                <SelectItem value="resolved">Resolved</SelectItem>
+                <SelectItem value="dismissed">Dismissed</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {reportMsg && <p className="text-sm text-[#004406] mb-3">{reportMsg}</p>}
+          {reportsLoading ? (
+            <div className="space-y-2">{[1, 2, 3].map((i) => <div key={i} className="h-16 bg-gray-100 animate-pulse rounded" />)}</div>
+          ) : reports.length === 0 ? (
+            <Card className="p-8 text-center text-muted-foreground">No reports found.</Card>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
+                {reports.map((report) => (
+                  <Card key={report._id} onClick={() => { setSelectedReport(report); setReportNote(report.adminNote || ''); setReportMsg(''); }}
+                    className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${selectedReport?._id === report._id ? 'border-[#004406] bg-[#004406]/5' : ''}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{report.event?.title || 'Unknown Event'}</p>
+                        <p className="text-xs text-muted-foreground">{report.reporter?.firstName} {report.reporter?.lastName} · {report.reason?.replace(/_/g, ' ')}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(report.createdAt).toLocaleDateString()}</p>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${REPORT_STATUS_COLORS[report.status] || 'bg-gray-100'}`}>{report.status?.replace('_', ' ')}</span>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+
+              {selectedReport ? (
+                <Card className="p-5 space-y-4">
+                  <div>
+                    <h3 className="font-semibold">{selectedReport.event?.title}</h3>
+                    <p className="text-xs text-muted-foreground">Reported by {selectedReport.reporter?.firstName} {selectedReport.reporter?.lastName} ({selectedReport.reporter?.email})</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Reason: <span className="font-medium capitalize">{selectedReport.reason?.replace(/_/g, ' ')}</span></p>
+                  </div>
+                  {selectedReport.details && (
+                    <div className="bg-gray-50 rounded p-3 text-sm">{selectedReport.details}</div>
+                  )}
+                  <div>
+                    <Label>Admin Note</Label>
+                    <Textarea value={reportNote} onChange={(e) => setReportNote(e.target.value)} placeholder="Internal note (optional)…" className="min-h-[80px] text-sm mt-1" />
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => handleReportUpdate(selectedReport._id, 'under_review')}>Mark Under Review</Button>
+                    <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => handleReportUpdate(selectedReport._id, 'resolved')}>Resolve</Button>
+                    <Button size="sm" variant="outline" className="text-gray-500" onClick={() => handleReportUpdate(selectedReport._id, 'dismissed')}>Dismiss</Button>
+                  </div>
+                </Card>
+              ) : (
+                <Card className="p-6 flex items-center justify-center text-muted-foreground text-sm">Select a report to review</Card>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'kyc' && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm text-muted-foreground">{kycs.length} submission(s)</p>
+            <Select value={kycStatusFilter} onValueChange={setKycStatusFilter}>
+              <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="under_review">Under Review</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
+                <SelectItem value="requires_resubmission">Needs Resubmission</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {kycMsg && <p className="text-sm text-[#004406] mb-3">{kycMsg}</p>}
+          {kycsLoading ? (
+            <div className="space-y-2">{[1, 2, 3].map((i) => <div key={i} className="h-16 bg-gray-100 animate-pulse rounded" />)}</div>
+          ) : kycs.length === 0 ? (
+            <Card className="p-8 text-center text-muted-foreground">No KYC submissions found.</Card>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
+                {kycs.map((kyc) => (
+                  <Card key={kyc._id} onClick={() => { setSelectedKyc(kyc); setKycNote(kyc.adminNote || ''); setKycMsg(''); }}
+                    className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${selectedKyc?._id === kyc._id ? 'border-[#004406] bg-[#004406]/5' : ''}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1">
+                          <p className="font-medium text-sm">{kyc.organizer?.firstName} {kyc.organizer?.lastName}</p>
+                          {kyc.organizer?.isVerifiedOrganizer && <span className="text-blue-500 text-xs" title="Verified">✓</span>}
+                        </div>
+                        <p className="text-xs text-muted-foreground">{kyc.organizer?.email}</p>
+                        <p className="text-xs text-muted-foreground">{kyc.businessName} · {kyc.businessType}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(kyc.createdAt).toLocaleDateString()}</p>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${KYC_STATUS_COLORS[kyc.status] || 'bg-gray-100'}`}>{kyc.status?.replace('_', ' ')}</span>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+
+              {selectedKyc ? (
+                <Card className="p-5 space-y-4">
+                  <div>
+                    <h3 className="font-semibold">{selectedKyc.organizer?.firstName} {selectedKyc.organizer?.lastName}</h3>
+                    <p className="text-xs text-muted-foreground">{selectedKyc.organizer?.email}</p>
+                  </div>
+                  <div className="space-y-1 text-sm">
+                    <p><span className="font-medium">Business:</span> {selectedKyc.businessName}</p>
+                    <p><span className="font-medium">Type:</span> {selectedKyc.businessType}</p>
+                    {selectedKyc.taxId && <p><span className="font-medium">Tax ID:</span> {selectedKyc.taxId}</p>}
+                    <p><span className="font-medium">Country:</span> {selectedKyc.country}</p>
+                    {selectedKyc.website && <p><span className="font-medium">Website:</span> <a href={selectedKyc.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">{selectedKyc.website}</a></p>}
+                  </div>
+                  <div className="flex gap-2">
+                    {selectedKyc.idDocumentUrl && (
+                      <a href={selectedKyc.idDocumentUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline">View ID Document</a>
+                    )}
+                    {selectedKyc.businessDocumentUrl && (
+                      <a href={selectedKyc.businessDocumentUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline">View Business Doc</a>
+                    )}
+                  </div>
+                  <div>
+                    <Label>Admin Note</Label>
+                    <Textarea value={kycNote} onChange={(e) => setKycNote(e.target.value)} placeholder="Decision note (optional)…" className="min-h-[80px] text-sm mt-1" />
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => handleKycUpdate(selectedKyc._id, 'under_review')}>Under Review</Button>
+                    <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => handleKycUpdate(selectedKyc._id, 'approved')}>Approve + Badge</Button>
+                    <Button size="sm" variant="outline" className="text-orange-600 border-orange-300" onClick={() => handleKycUpdate(selectedKyc._id, 'requires_resubmission')}>Needs Resubmission</Button>
+                    <Button size="sm" variant="outline" className="text-red-600 border-red-300" onClick={() => handleKycUpdate(selectedKyc._id, 'rejected')}>Reject</Button>
+                  </div>
+                </Card>
+              ) : (
+                <Card className="p-6 flex items-center justify-center text-muted-foreground text-sm">Select a submission to review</Card>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Reports & Analytics ───────────────────────────────────────────────────────
 function Reports() {
   const [stats, setStats] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);

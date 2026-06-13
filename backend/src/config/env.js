@@ -20,5 +20,19 @@ export default {
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
-  CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET
+  CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
+  // Twilio (SMS 2FA)
+  TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+  TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+  TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+  // Daily.co (custom live events)
+  DAILY_API_KEY: process.env.DAILY_API_KEY,
+  DAILY_API_BASE_URL: process.env.DAILY_API_BASE_URL || 'https://api.daily.co/v1',
+  // Zoom
+  ZOOM_CLIENT_ID: process.env.ZOOM_CLIENT_ID,
+  ZOOM_CLIENT_SECRET: process.env.ZOOM_CLIENT_SECRET,
+  ZOOM_REDIRECT_URI: process.env.ZOOM_REDIRECT_URI,
+  // Google OAuth (Calendar + Meet)
+  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+  GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI,
 };

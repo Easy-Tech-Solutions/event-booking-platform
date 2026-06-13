@@ -9,6 +9,8 @@ import BlogPost from "../models/BlogPost.model.js";
 import Role from "../models/Role.model.js";
 import Permission from "../models/Permission.model.js";
 import Payout from "../models/Payout.model.js";
+import EventReport from "../models/EventReport.model.js";
+import OrganizerKyc from "../models/OrganizerKyc.model.js";
 import { notify } from "../utils/notify.js";
 
 // System permissions seed — stays in sync with permissions.js
@@ -925,6 +927,151 @@ const updatePayoutStatus = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// ── Trust & Safety — Event Reports ───────────────────────────────────────────
+const getEventReports = async (req, res, next) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+    const { status } = req.query;
+
+    const query = {};
+    if (status) query.status = status;
+
+    const [reports, total] = await Promise.all([
+      EventReport.find(query)
+        .populate('reporter', 'firstName lastName email')
+        .populate('event', 'title organizer')
+        .populate('reviewedBy', 'firstName lastName')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      EventReport.countDocuments(query),
+    ]);
+
+    return res.json({
+      reports,
+      pagination: { total, totalPages: Math.ceil(total / limit), currentPage: page, limit },
+    });
+  } catch (err) { next(err); }
+};
+
+const updateEventReport = async (req, res, next) => {
+  try {
+    const { status, adminNote } = req.body;
+    const validStatuses = ['pending', 'under_review', 'resolved', 'dismissed'];
+    if (status && !validStatuses.includes(status)) {
+      return res.status(400).json({ message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+    }
+
+    const report = await EventReport.findById(req.params.id);
+    if (!report) return res.status(404).json({ message: 'Report not found.' });
+
+    if (status) report.status = status;
+    if (adminNote !== undefined) report.adminNote = adminNote;
+    if (['resolved', 'dismissed'].includes(status)) {
+      report.reviewedBy = req.user._id;
+      report.reviewedAt = new Date();
+    }
+
+    await report.save();
+
+    // Update the event's report count and flagged status
+    if (status === 'under_review') {
+      await Event.findByIdAndUpdate(report.event, { isFlaggedForReview: true });
+    } else if (status === 'dismissed') {
+      const openCount = await EventReport.countDocuments({ event: report.event, status: { $in: ['pending', 'under_review'] } });
+      if (openCount === 0) {
+        await Event.findByIdAndUpdate(report.event, { isFlaggedForReview: false });
+      }
+    }
+
+    const populated = await report.populate([
+      { path: 'reporter', select: 'firstName lastName email' },
+      { path: 'event', select: 'title' },
+      { path: 'reviewedBy', select: 'firstName lastName' },
+    ]);
+
+    return res.json({ report: populated });
+  } catch (err) { next(err); }
+};
+
+// ── Trust & Safety — KYC ──────────────────────────────────────────────────────
+const getKycSubmissions = async (req, res, next) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+    const { status } = req.query;
+
+    const query = {};
+    if (status) query.status = status;
+
+    const [submissions, total] = await Promise.all([
+      OrganizerKyc.find(query)
+        .populate('organizer', 'firstName lastName email isVerifiedOrganizer')
+        .populate('reviewedBy', 'firstName lastName')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      OrganizerKyc.countDocuments(query),
+    ]);
+
+    return res.json({
+      submissions,
+      pagination: { total, totalPages: Math.ceil(total / limit), currentPage: page, limit },
+    });
+  } catch (err) { next(err); }
+};
+
+const updateKycStatus = async (req, res, next) => {
+  try {
+    const { status, adminNote } = req.body;
+    const validStatuses = ['pending', 'under_review', 'approved', 'rejected', 'requires_resubmission'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ message: `Invalid status.` });
+    }
+
+    const kyc = await OrganizerKyc.findById(req.params.id);
+    if (!kyc) return res.status(404).json({ message: 'KYC submission not found.' });
+
+    kyc.status = status;
+    if (adminNote !== undefined) kyc.adminNote = adminNote;
+    kyc.reviewedBy = req.user._id;
+    kyc.reviewedAt = new Date();
+    await kyc.save();
+
+    // Auto-grant verified badge on approval
+    if (status === 'approved') {
+      await User.findByIdAndUpdate(kyc.organizer, {
+        isVerifiedOrganizer: true,
+        verifiedOrganizerAt: new Date(),
+      });
+    } else if (status === 'rejected') {
+      await User.findByIdAndUpdate(kyc.organizer, { isVerifiedOrganizer: false });
+    }
+
+    return res.json({ kyc });
+  } catch (err) { next(err); }
+};
+
+// ── Trust & Safety — Verified Organizer Badge ─────────────────────────────────
+const grantVerifiedBadge = async (req, res, next) => {
+  try {
+    const { grant } = req.body; // true to grant, false to revoke
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    user.isVerifiedOrganizer = !!grant;
+    user.verifiedOrganizerAt = grant ? new Date() : undefined;
+    await user.save();
+
+    return res.json({
+      message: grant ? 'Verified organizer badge granted.' : 'Verified organizer badge revoked.',
+      userId: user._id,
+      isVerifiedOrganizer: user.isVerifiedOrganizer,
+    });
+  } catch (err) { next(err); }
+};
+
 export {
   getAllUsers,
   getUserById,
@@ -961,4 +1108,9 @@ export {
   getPayouts,
   calculatePayouts,
   updatePayoutStatus,
+  getEventReports,
+  updateEventReport,
+  getKycSubmissions,
+  updateKycStatus,
+  grantVerifiedBadge,
 };

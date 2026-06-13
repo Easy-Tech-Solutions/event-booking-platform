@@ -35,6 +35,11 @@ import {
   getPayouts,
   calculatePayouts,
   updatePayoutStatus,
+  getEventReports,
+  updateEventReport,
+  getKycSubmissions,
+  updateKycStatus,
+  grantVerifiedBadge,
 } from "../controllers/admin.controller.js";
 
 const router = express.Router();
@@ -53,6 +58,7 @@ router.patch("/users/:id/unsuspend", authorize("admin", "superadmin"), unsuspend
 router.delete("/users/:id", authorize("admin", "superadmin"), deleteUser);
 router.patch("/users/:id/role", authorize("admin", "superadmin"), changeUserRole);
 router.patch("/users/:id/permissions", authorize("admin", "superadmin"), updateUserPermissions);
+router.patch("/users/:id/verified-badge", authorize("admin", "superadmin"), grantVerifiedBadge);
 
 // ── Organizer Approval ────────────────────────────────────────────────────────
 router.get("/organizer-requests", getOrganizerRequests);
@@ -101,5 +107,11 @@ router.delete("/permissions/:id", authorize("admin", "superadmin"), deletePermis
 router.get("/payouts", authorize("admin", "superadmin"), getPayouts);
 router.post("/payouts/calculate", authorize("admin", "superadmin"), calculatePayouts);
 router.patch("/payouts/:id", authorize("admin", "superadmin"), updatePayoutStatus);
+
+// ── Trust & Safety ────────────────────────────────────────────────────────────
+router.get("/reports", getEventReports);
+router.patch("/reports/:id", authorize("admin", "superadmin"), updateEventReport);
+router.get("/kyc", authorize("admin", "superadmin"), getKycSubmissions);
+router.patch("/kyc/:id", authorize("admin", "superadmin"), updateKycStatus);
 
 export default router;
