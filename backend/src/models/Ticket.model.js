@@ -34,6 +34,10 @@ const ticketSchema = new mongoose.Schema(
       default: "active",
     },
     checkInTime: Date,
+    isVip: { type: Boolean, default: false },
+    isComp: { type: Boolean, default: false },
+    seatId: { type: String, default: null },   // e.g. "A-3" if reserved seating
+    timedEntrySlot: { type: String, default: null },
     transferHistory: [
       {
         from: {

@@ -53,6 +53,15 @@ const orderSchema = new mongoose.Schema({
   paymentMethod: String,
   refundStatus: { type: String, enum: ['none', 'pending', 'approved', 'rejected'], default: 'none' },
   refundReason: String,
+  // ── Promo code ────────────────────────────────────────────────────────────
+  promoCode: { type: mongoose.Schema.Types.ObjectId, ref: 'PromoCode', default: null },
+  promoCodeValue: { type: String, default: null }, // snapshot of the code string
+  discountAmount: { type: Number, default: 0 },
+  // ── UTM / tracking attribution ───────────────────────────────────────────
+  trackingLink: { type: mongoose.Schema.Types.ObjectId, ref: 'TrackingLink', default: null },
+  utmSource: { type: String, default: null },
+  utmMedium: { type: String, default: null },
+  utmCampaign: { type: String, default: null },
   billingDetails: {
     name: String,
     email: String,

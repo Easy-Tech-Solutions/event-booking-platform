@@ -26,6 +26,11 @@ import liveRoutes from "./routes/live.routes.js";
 import integrationRoutes from "./routes/integration.routes.js";
 import calendarRoutes from "./routes/calendar.routes.js";
 import kycRoutes from "./routes/kyc.routes.js";
+import promoCodeRoutes from "./routes/promoCode.routes.js";
+import seatRoutes from "./routes/seat.routes.js";
+import trackingLinkRoutes from "./routes/trackingLink.routes.js";
+import developerRoutes from "./routes/developer.routes.js";
+import aiRoutes from "./routes/ai.routes.js";
 
 // const { CLIENT_URL } = env;
 
@@ -138,6 +143,11 @@ app.use("/api/live", liveRoutes);
 app.use("/api/integrations", integrationRoutes);
 app.use("/api/calendar", calendarRoutes);
 app.use("/api/kyc", kycRoutes);
+app.use("/api/promo-codes", promoCodeRoutes);
+app.use("/api/seats", seatRoutes);
+app.use("/api/tracking-links", trackingLinkRoutes);
+app.use("/api/developer", developerRoutes);
+app.use("/api/ai", aiRoutes);
 
 // Error handling
 app.use(notFound);

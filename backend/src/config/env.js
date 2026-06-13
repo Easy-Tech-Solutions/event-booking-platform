@@ -35,4 +35,6 @@ export default {
   // Google OAuth (Calendar + Meet)
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI,
+  // OpenAI (AI content generation)
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY,
 };
