@@ -22,13 +22,28 @@ const createDailyRoom = async (eventId, expiresAt) => {
   return data;
 };
 
+// ─── GET /api/live/sessions ───────────────────────────────────────────────────
+// List sessions for an event (public — needed by EventDetails to check live status)
+export const listSessionsByEvent = async (req, res, next) => {
+  try {
+    const { event: eventId } = req.query;
+    if (!eventId) return res.status(400).json({ message: 'event query param required.' });
+    const sessions = await LiveSession.find({ event: eventId }).select('provider status startedAt event');
+    return res.json({ sessions });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ─── POST /api/live/sessions ──────────────────────────────────────────────────
 // Organizer creates a live session for their event
 export const createLiveSession = async (req, res, next) => {
   try {
-    const { eventId, provider } = req.body;
+    // Accept either `event` or `eventId` field for flexibility
+    const eventId = req.body.event || req.body.eventId;
+    const { provider } = req.body;
     if (!eventId || !provider) {
-      return res.status(400).json({ message: 'eventId and provider are required.' });
+      return res.status(400).json({ message: 'event and provider are required.' });
     }
 
     const event = await Event.findById(eventId);

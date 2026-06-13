@@ -40,6 +40,7 @@ interface EventDraft {
   state: string;
   country: string;
   onlineLink: string;
+  liveProvider: 'none' | 'custom' | 'zoom' | 'google_meet';
   description: string;
   coverImageUrl: string;
   tags: string[];
@@ -79,6 +80,7 @@ const DEFAULT_DRAFT: EventDraft = {
   state: '',
   country: 'US',
   onlineLink: '',
+  liveProvider: 'none',
   description: '',
   coverImageUrl: '',
   tags: [],
@@ -165,9 +167,9 @@ export function CreateEventPage() {
       if (createEvent.fulfilled.match(result)) {
         const eventId = result.payload.event?._id;
         if (eventId) {
-          // Create ticket types in parallel
-          await Promise.all(
-            draft.ticketTypes
+          await Promise.all([
+            // Create ticket types
+            ...draft.ticketTypes
               .filter((tt) => tt.name.trim() && parseInt(tt.quantity) >= 1)
               .map((tt) =>
                 apiClient.post('/ticket-types', {
@@ -177,8 +179,12 @@ export function CreateEventPage() {
                   quantity: parseInt(tt.quantity),
                   description: tt.description.trim() || undefined,
                 }).catch(() => {})
-              )
-          );
+              ),
+            // Create live session if a provider was selected
+            ...(draft.liveProvider !== 'none' && (draft.format === 'online' || draft.format === 'hybrid')
+              ? [apiClient.post('/live/sessions', { event: eventId, provider: draft.liveProvider }).catch(() => {})]
+              : []),
+          ]);
         }
         setSuccess(true);
         setTimeout(() => navigate('/organizer/events'), 2000);
@@ -218,6 +224,7 @@ export function CreateEventPage() {
         {/* Header */}
         <div className="mb-8">
           <button
+            type="button"
             onClick={() => navigate('/organizer/events')}
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors"
           >
@@ -410,7 +417,7 @@ function Step1Basics({ draft, set, categories, tagInput, setTagInput }: {
             {draft.tags.map((t) => (
               <Badge key={t} variant="secondary" className="gap-1 py-1 px-3">
                 {t}
-                <button onClick={() => set('tags', draft.tags.filter((x) => x !== t))} className="ml-1 hover:text-destructive">
+                <button type="button" aria-label={`Remove tag ${t}`} onClick={() => set('tags', draft.tags.filter((x) => x !== t))} className="ml-1 hover:text-destructive">
                   <X className="w-3 h-3" />
                 </button>
               </Badge>
@@ -522,8 +529,8 @@ function Step2DateVenue({ draft, set }: { draft: EventDraft; set: <K extends key
       {/* Online Link */}
       {(isOnline || isHybrid) && (
         <Card className="p-6">
-          <h2 className="text-xl font-semibold mb-1">Online event link</h2>
-          <p className="text-sm text-muted-foreground mb-4">Provide the link where attendees will join your event.</p>
+          <h2 className="text-xl font-semibold mb-1">Online event link <span className="text-muted-foreground font-normal text-base">(optional)</span></h2>
+          <p className="text-sm text-muted-foreground mb-4">If not using a live provider below, paste your external link here.</p>
           <div className="flex items-center gap-2">
             <Globe className="w-5 h-5 text-muted-foreground shrink-0" />
             <Input
@@ -532,6 +539,45 @@ function Step2DateVenue({ draft, set }: { draft: EventDraft; set: <K extends key
               placeholder="https://zoom.us/j/..."
             />
           </div>
+        </Card>
+      )}
+
+      {/* Live Provider */}
+      {(isOnline || isHybrid) && (
+        <Card className="p-6">
+          <h2 className="text-xl font-semibold mb-1">Live video provider</h2>
+          <p className="text-sm text-muted-foreground mb-5">Choose how attendees will watch or participate in your event live.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {([
+              { value: 'none', emoji: '—', label: 'No live stream', desc: 'In-person or pre-recorded only' },
+              { value: 'custom', emoji: '🎥', label: 'EventHub Live', desc: 'Built-in video room (Daily.co)' },
+              { value: 'zoom', emoji: '💙', label: 'Zoom', desc: 'Requires linked Zoom account' },
+              { value: 'google_meet', emoji: '🟢', label: 'Google Meet', desc: 'Requires linked Google account' },
+            ] as const).map(({ value, emoji, label, desc }) => {
+              const selected = draft.liveProvider === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => set('liveProvider', value)}
+                  className={`flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all hover:border-[#004406]/50
+                    ${selected ? 'border-[#004406] bg-[#004406]/5' : 'border-gray-200 bg-white'}`}
+                >
+                  <span className="text-xl">{emoji}</span>
+                  <div>
+                    <div className={`font-medium text-sm ${selected ? 'text-[#004406]' : ''}`}>{label}</div>
+                    <div className="text-xs text-muted-foreground">{desc}</div>
+                  </div>
+                  {selected && <Check className="w-4 h-4 text-[#004406] ml-auto" />}
+                </button>
+              );
+            })}
+          </div>
+          {(draft.liveProvider === 'zoom' || draft.liveProvider === 'google_meet') && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-3 mt-4">
+              You must link your {draft.liveProvider === 'zoom' ? 'Zoom' : 'Google'} account in <a href="/user/profile" className="underline">Profile Settings → Connected Accounts</a> before the session can be created.
+            </p>
+          )}
         </Card>
       )}
     </div>
@@ -690,7 +736,7 @@ function Step3Details({ draft, set, tagInput, setTagInput }: {
               <div key={i} className="p-4 border rounded-xl space-y-3 bg-gray-50">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">FAQ {i + 1}</span>
-                  <button onClick={() => removeFaq(i)} className="text-muted-foreground hover:text-destructive transition-colors">
+                  <button type="button" aria-label="Remove FAQ" onClick={() => removeFaq(i)} className="text-muted-foreground hover:text-destructive transition-colors">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -779,6 +825,8 @@ function Step4Tickets({ draft, set }: { draft: EventDraft; set: <K extends keyof
                   </span>
                 </div>
                 <button
+                  type="button"
+                  aria-label="Remove ticket type"
                   onClick={() => removeTT(i)}
                   disabled={draft.ticketTypes.length === 1}
                   className="text-muted-foreground hover:text-destructive transition-colors disabled:opacity-30"

@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticate } from '../middlewares/auth.js';
 import {
+  listSessionsByEvent,
   createLiveSession,
   getLiveSession,
   startLiveSession,
@@ -10,6 +11,7 @@ import {
 
 const router = express.Router();
 
+router.get('/sessions', listSessionsByEvent);
 router.post('/sessions', authenticate, createLiveSession);
 router.get('/sessions/:sessionId', authenticate, getLiveSession);
 router.patch('/sessions/:sessionId/start', authenticate, startLiveSession);
