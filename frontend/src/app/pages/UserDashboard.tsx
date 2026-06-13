@@ -6,9 +6,10 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { Textarea } from '../components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Separator } from '../components/ui/separator';
-import { Ticket, Heart, Calendar, CreditCard, Settings, Download, MapPin, User } from 'lucide-react';
+import { Ticket, Heart, Calendar, CreditCard, Settings, Download, MapPin, User, Globe, Twitter, Linkedin, Instagram, ShieldCheck, QrCode, KeyRound } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../store';
 import { fetchMyOrders } from '../store/slices/ordersSlice';
 import { updateUser, fetchProfile } from '../store/slices/authSlice';
@@ -240,17 +241,32 @@ function ProfileSettings() {
   const dispatch = useAppDispatch();
   const { user } = useAppSelector((state) => state.auth);
 
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '' });
+  const [form, setForm] = useState({
+    firstName: '', lastName: '', email: '', phone: '',
+    bio: '',
+    website: '', twitter: '', linkedin: '', instagram: '',
+  });
   const [profileSaved, setProfileSaved] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [profileLoading, setProfileLoading] = useState(false);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
   const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
   const [pwSaved, setPwSaved] = useState(false);
   const [pwError, setPwError] = useState('');
   const [pwLoading, setPwLoading] = useState(false);
 
-  // Sync form whenever Redux user changes (e.g. after fetchProfile on mount)
+  // 2FA state
+  const [twoFAStep, setTwoFAStep] = useState<'idle' | 'setup' | 'verify' | 'disable'>('idle');
+  const [qrCode, setQrCode] = useState('');
+  const [manualKey, setManualKey] = useState('');
+  const [totpCode, setTotpCode] = useState('');
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [twoFAMsg, setTwoFAMsg] = useState('');
+  const [twoFALoading, setTwoFALoading] = useState(false);
+  const [twoFAEnabled, setTwoFAEnabled] = useState(user?.totpEnabled ?? false);
+
   useEffect(() => {
     if (user) {
       setForm({
@@ -258,9 +274,22 @@ function ProfileSettings() {
         lastName: user.lastName || '',
         email: user.email || '',
         phone: user.phone || '',
+        bio: user.bio || '',
+        website: user.socialLinks?.website || '',
+        twitter: user.socialLinks?.twitter || '',
+        linkedin: user.socialLinks?.linkedin || '',
+        instagram: user.socialLinks?.instagram || '',
       });
+      setTwoFAEnabled(user.totpEnabled ?? false);
     }
   }, [user]);
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  };
 
   const handleProfileSave = async () => {
     setProfileError('');
@@ -270,12 +299,22 @@ function ProfileSettings() {
     }
     setProfileLoading(true);
     try {
-      const res = await apiClient.put('/auth/profile', {
-        firstName: form.firstName.trim(),
-        lastName: form.lastName.trim(),
-        phone: form.phone.trim(),
+      const formData = new FormData();
+      formData.append('firstName', form.firstName.trim());
+      formData.append('lastName', form.lastName.trim());
+      formData.append('phone', form.phone.trim());
+      formData.append('bio', form.bio.trim());
+      formData.append('socialLinks[website]', form.website.trim());
+      formData.append('socialLinks[twitter]', form.twitter.trim());
+      formData.append('socialLinks[linkedin]', form.linkedin.trim());
+      formData.append('socialLinks[instagram]', form.instagram.trim());
+      if (avatarFile) formData.append('avatar', avatarFile);
+
+      const res = await apiClient.put('/auth/profile', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
       dispatch(updateUser(res.data.user));
+      setAvatarFile(null);
       setProfileSaved(true);
       setTimeout(() => setProfileSaved(false), 3000);
     } catch (e: any) {
@@ -304,18 +343,77 @@ function ProfileSettings() {
     }
   };
 
+  const handle2FASetup = async () => {
+    setTwoFALoading(true); setTwoFAMsg('');
+    try {
+      const res = await apiClient.post('/auth/2fa/setup');
+      setQrCode(res.data.qrCode);
+      setManualKey(res.data.manualKey);
+      setTwoFAStep('verify');
+    } catch (e: any) {
+      setTwoFAMsg(e.response?.data?.message || 'Setup failed.');
+    } finally {
+      setTwoFALoading(false);
+    }
+  };
+
+  const handle2FAVerify = async () => {
+    if (!totpCode.trim()) return;
+    setTwoFALoading(true); setTwoFAMsg('');
+    try {
+      const res = await apiClient.post('/auth/2fa/verify', { token: totpCode });
+      setBackupCodes(res.data.backupCodes || []);
+      setTwoFAEnabled(true);
+      setTwoFAStep('idle');
+      setTotpCode('');
+      dispatch(fetchProfile());
+    } catch (e: any) {
+      setTwoFAMsg(e.response?.data?.message || 'Invalid code.');
+    } finally {
+      setTwoFALoading(false);
+    }
+  };
+
+  const handle2FADisable = async () => {
+    if (!totpCode.trim()) return;
+    setTwoFALoading(true); setTwoFAMsg('');
+    try {
+      await apiClient.post('/auth/2fa/disable', { token: totpCode });
+      setTwoFAEnabled(false);
+      setTwoFAStep('idle');
+      setTotpCode('');
+      dispatch(fetchProfile());
+    } catch (e: any) {
+      setTwoFAMsg(e.response?.data?.message || 'Invalid code.');
+    } finally {
+      setTwoFALoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Profile Info */}
       <Card className="p-6">
         <h2 className="text-2xl font-bold mb-6">Profile Settings</h2>
-        <div className="space-y-4">
-          <div className="flex items-center gap-4 mb-2">
-            <div className="w-16 h-16 bg-[#004406] rounded-full flex items-center justify-center shrink-0">
-              <User className="w-8 h-8 text-white" />
+        <div className="space-y-5">
+          {/* Avatar */}
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              {avatarPreview || user?.avatar ? (
+                <img src={avatarPreview || user?.avatar} alt="avatar" className="w-16 h-16 rounded-full object-cover" />
+              ) : (
+                <div className="w-16 h-16 bg-[#004406] rounded-full flex items-center justify-center shrink-0">
+                  <User className="w-8 h-8 text-white" />
+                </div>
+              )}
             </div>
             <div>
-              <div className="font-semibold">{user?.firstName} {user?.lastName}</div>
-              <div className="text-sm text-muted-foreground">{user?.email}</div>
+              <p className="font-semibold">{user?.firstName} {user?.lastName}</p>
+              <p className="text-sm text-muted-foreground mb-2">{user?.email}</p>
+              <label className="text-xs text-[#004406] cursor-pointer hover:underline">
+                Change Photo
+                <input type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+              </label>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -336,37 +434,136 @@ function ProfileSettings() {
               <Label>Phone</Label>
               <Input type="tel" value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} placeholder="+1 (555) 123-4567" />
             </div>
+            <div className="md:col-span-2">
+              <Label>Bio</Label>
+              <Textarea value={form.bio} onChange={(e) => setForm((p) => ({ ...p, bio: e.target.value }))} placeholder="Tell people a little about yourself…" rows={3} maxLength={500} />
+              <p className="text-xs text-muted-foreground mt-1">{form.bio.length}/500 characters</p>
+            </div>
+          </div>
+          {/* Social Links */}
+          <div>
+            <p className="font-medium text-sm mb-3">Social Links</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {([
+                { icon: Globe, key: 'website', placeholder: 'https://yoursite.com' },
+                { icon: Twitter, key: 'twitter', placeholder: 'https://twitter.com/username' },
+                { icon: Linkedin, key: 'linkedin', placeholder: 'https://linkedin.com/in/username' },
+                { icon: Instagram, key: 'instagram', placeholder: 'https://instagram.com/username' },
+              ] as const).map(({ icon: Icon, key, placeholder }) => (
+                <div key={key} className="relative">
+                  <Icon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    value={(form as any)[key]}
+                    onChange={(e) => setForm((p) => ({ ...p, [key]: e.target.value }))}
+                    placeholder={placeholder}
+                    className="pl-9"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
           {profileError && <p className="text-sm text-destructive">{profileError}</p>}
           {profileSaved && <p className="text-sm text-[#004406]">Profile saved successfully!</p>}
           <Button className="bg-[#004406] hover:bg-[#003305] text-white" onClick={handleProfileSave} disabled={profileLoading}>
-            {profileLoading ? 'Saving...' : 'Save Changes'}
+            {profileLoading ? 'Saving…' : 'Save Changes'}
           </Button>
         </div>
       </Card>
 
+      {/* Organizer request */}
       {user?.role === 'attendee' && (
         <Card className="p-6">
           <h3 className="text-lg font-semibold mb-2">Become an Organizer</h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            Want to create and host events? Request organizer access — an admin will review your request.
-          </p>
+          <p className="text-sm text-muted-foreground mb-4">Want to create and host events? Request organizer access — an admin will review your request.</p>
           <OrganizerRequestButton currentStatus={user.organizerStatus} />
         </Card>
       )}
 
-      {user?.role !== 'admin' && (
+      {/* Admin setup */}
+      {user?.role !== 'admin' && user?.role !== 'superadmin' && (
         <Card className="p-6 border-dashed border-amber-300 bg-amber-50/50">
           <h3 className="text-lg font-semibold mb-2">Admin Setup</h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            Promote your account to admin. Only works when no admin exists on the platform — permanently disabled after the first activation.
-          </p>
+          <p className="text-sm text-muted-foreground mb-4">Promote your account to admin. Only works when no admin exists on the platform.</p>
           <AdminSetupButton />
         </Card>
       )}
 
+      {/* 2FA */}
       <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4">Change Password</h3>
+        <div className="flex items-center gap-3 mb-4">
+          <ShieldCheck className="w-5 h-5 text-[#004406]" />
+          <h3 className="text-lg font-semibold">Two-Factor Authentication</h3>
+          <Badge className={twoFAEnabled ? 'bg-[#004406]/10 text-[#004406]' : 'bg-gray-100 text-gray-600'}>
+            {twoFAEnabled ? 'Enabled' : 'Disabled'}
+          </Badge>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">Add an extra layer of security to your account using an authenticator app like Google Authenticator or Authy.</p>
+
+        {backupCodes.length > 0 && (
+          <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+            <p className="font-semibold text-sm mb-2 text-amber-800">Save your backup codes — each can only be used once:</p>
+            <div className="grid grid-cols-2 gap-1">
+              {backupCodes.map((code) => (
+                <code key={code} className="text-xs font-mono bg-white border rounded px-2 py-1">{code}</code>
+              ))}
+            </div>
+            <Button variant="outline" size="sm" className="mt-3" onClick={() => setBackupCodes([])}>I've saved these codes</Button>
+          </div>
+        )}
+
+        {twoFAStep === 'idle' && (
+          <div className="flex gap-2">
+            {!twoFAEnabled ? (
+              <Button onClick={() => { setTwoFAStep('setup'); handle2FASetup(); }} className="bg-[#004406] hover:bg-[#003305] text-white" disabled={twoFALoading}>
+                <QrCode className="w-4 h-4 mr-2" />
+                {twoFALoading ? 'Loading…' : 'Set Up 2FA'}
+              </Button>
+            ) : (
+              <Button variant="outline" className="text-red-600 border-red-200" onClick={() => setTwoFAStep('disable')}>
+                Disable 2FA
+              </Button>
+            )}
+          </div>
+        )}
+
+        {twoFAStep === 'verify' && qrCode && (
+          <div className="space-y-4">
+            <p className="text-sm font-medium">1. Scan this QR code with your authenticator app:</p>
+            <img src={qrCode} alt="QR code" className="w-48 h-48 border rounded" />
+            <p className="text-xs text-muted-foreground">Or enter the key manually: <code className="font-mono bg-gray-100 px-1 rounded">{manualKey}</code></p>
+            <p className="text-sm font-medium">2. Enter the 6-digit code shown in your app:</p>
+            <div className="flex gap-2 items-center">
+              <Input value={totpCode} onChange={(e) => setTotpCode(e.target.value)} placeholder="123456" maxLength={6} className="w-32 font-mono text-center text-lg" />
+              <Button onClick={handle2FAVerify} className="bg-[#004406] text-white" disabled={twoFALoading || totpCode.length < 6}>
+                {twoFALoading ? 'Verifying…' : 'Verify & Enable'}
+              </Button>
+              <Button variant="ghost" onClick={() => { setTwoFAStep('idle'); setTotpCode(''); setTwoFAMsg(''); }}>Cancel</Button>
+            </div>
+            {twoFAMsg && <p className="text-sm text-red-600">{twoFAMsg}</p>}
+          </div>
+        )}
+
+        {twoFAStep === 'disable' && (
+          <div className="space-y-3">
+            <p className="text-sm">Enter your current authenticator code to disable 2FA:</p>
+            <div className="flex gap-2 items-center">
+              <Input value={totpCode} onChange={(e) => setTotpCode(e.target.value)} placeholder="123456" maxLength={6} className="w-32 font-mono text-center text-lg" />
+              <Button onClick={handle2FADisable} variant="outline" className="text-red-600 border-red-200" disabled={twoFALoading || totpCode.length < 6}>
+                {twoFALoading ? 'Disabling…' : 'Disable 2FA'}
+              </Button>
+              <Button variant="ghost" onClick={() => { setTwoFAStep('idle'); setTotpCode(''); setTwoFAMsg(''); }}>Cancel</Button>
+            </div>
+            {twoFAMsg && <p className="text-sm text-red-600">{twoFAMsg}</p>}
+          </div>
+        )}
+      </Card>
+
+      {/* Change password */}
+      <Card className="p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <KeyRound className="w-5 h-5 text-[#004406]" />
+          <h3 className="text-lg font-semibold">Change Password</h3>
+        </div>
         <div className="space-y-4">
           <div>
             <Label>Current Password</Label>
@@ -384,7 +581,7 @@ function ProfileSettings() {
           {pwError && <p className="text-sm text-destructive">{pwError}</p>}
           {pwSaved && <p className="text-sm text-[#004406]">Password changed successfully!</p>}
           <Button className="bg-[#004406] hover:bg-[#003305] text-white" onClick={handlePasswordChange} disabled={pwLoading}>
-            {pwLoading ? 'Updating...' : 'Update Password'}
+            {pwLoading ? 'Updating…' : 'Update Password'}
           </Button>
         </div>
       </Card>
