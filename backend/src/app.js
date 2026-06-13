@@ -36,6 +36,11 @@ import aiRoutes from "./routes/ai.routes.js";
 
 const app = express();
 
+// Trust the first proxy (Render's load balancer) so that
+// express-rate-limit reads the real client IP from X-Forwarded-For
+// instead of seeing all requests as the same internal IP.
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet());
 
@@ -90,6 +95,8 @@ const limiter = rateLimit({
   message: "Too many requests from this IP, please try again later.",
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip health check and root so Render's uptime pings never hit the limit
+  skip: (req) => req.path === '/api/health' || req.path === '/',
 });
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
