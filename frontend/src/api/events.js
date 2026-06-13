@@ -7,4 +7,5 @@ export const eventAPI = {
   updateEvent: (id, eventData) => apiClient.put(`/events/${id}`, eventData),
   deleteEvent: (id) => apiClient.delete(`/events/${id}`),
   getMyEvents: (params) => apiClient.get('/events/my-events', { params }),
+  getTicketTypes: (eventId) => apiClient.get(`/ticket-types/event/${eventId}`),
 };
