@@ -5,7 +5,7 @@ import { ShieldX, Home, LogIn } from 'lucide-react';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requiredRole?: 'attendee' | 'organizer' | 'admin';
+  requiredRole?: 'attendee' | 'organizer' | 'admin' | 'superadmin' | 'support_agent';
 }
 
 function AccessDenied({ requiredRole }: { requiredRole?: string }) {
@@ -13,7 +13,9 @@ function AccessDenied({ requiredRole }: { requiredRole?: string }) {
   const { user } = useAppSelector((s) => s.auth);
 
   const roleLabel: Record<string, string> = {
+    superadmin: 'Super Administrator',
     admin: 'Administrator',
+    support_agent: 'Support Agent',
     organizer: 'Event Organizer',
     attendee: 'Attendee',
   };
@@ -74,7 +76,7 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
     return <Navigate to="/signin" state={{ from: location }} replace />;
   }
 
-  if (requiredRole && user?.role !== requiredRole && user?.role !== 'admin') {
+  if (requiredRole && user?.role !== requiredRole && user?.role !== 'admin' && user?.role !== 'superadmin') {
     return <AccessDenied requiredRole={requiredRole} />;
   }
 

@@ -12,6 +12,10 @@ import {
   updateProfile,
   changePassword,
   googleAuth,
+  setup2FA,
+  verify2FA,
+  disable2FA,
+  challenge2FA,
 } from "../controllers/auth.controller.js";
 import { requestOrganizer } from "../controllers/admin.controller.js";
 import { registerValidation, loginValidation } from "../validators/index.js";
@@ -35,5 +39,11 @@ router.put("/profile", authenticate, upload.single("avatar"), updateProfile);
 
 // Change password while logged in
 router.put("/change-password", authenticate, changePassword);
+
+// ── 2FA ──────────────────────────────────────────────────────────────────────
+router.post("/2fa/setup", authenticate, setup2FA);
+router.post("/2fa/verify", authenticate, verify2FA);
+router.post("/2fa/disable", authenticate, disable2FA);
+router.post("/2fa/challenge", challenge2FA); // no auth — completes the challenge flow
 
 export default router;

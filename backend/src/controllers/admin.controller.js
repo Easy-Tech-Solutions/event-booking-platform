@@ -3,6 +3,9 @@ import Event from "../models/Event.model.js";
 import Order from "../models/Order.model.js";
 import Ticket from "../models/Ticket.model.js";
 import TicketType from "../models/TicketType.model.js";
+import SupportTicket from "../models/SupportTicket.model.js";
+import Category from "../models/Category.model.js";
+import BlogPost from "../models/BlogPost.model.js";
 import { notify } from "../utils/notify.js";
 
 // ─── GET /api/admin/users ─────────────────────────────────────────────────────
@@ -134,13 +137,18 @@ const deleteUser = async (req, res, next) => {
 const changeUserRole = async (req, res, next) => {
   try {
     const { role } = req.body;
-    const validRoles = ["attendee", "organizer", "admin"];
+    const validRoles = ["attendee", "organizer", "support_agent", "admin", "superadmin"];
     if (!role || !validRoles.includes(role)) {
       return res
         .status(400)
         .json({
           message: `Invalid role. Must be one of: ${validRoles.join(", ")}`,
         });
+    }
+
+    // Only superadmin can assign superadmin
+    if (role === "superadmin" && req.user.role !== "superadmin") {
+      return res.status(403).json({ message: "Only a superadmin can assign the superadmin role." });
     }
 
     const user = await User.findById(req.params.id);
@@ -461,6 +469,192 @@ const setupInitialAdmin = async (req, res, next) => {
   }
 };
 
+// ─── PATCH /api/admin/users/:id/permissions ───────────────────────────────────
+const updateUserPermissions = async (req, res, next) => {
+  try {
+    const { customPermissions } = req.body;
+    if (!Array.isArray(customPermissions)) {
+      return res.status(400).json({ message: "customPermissions must be an array." });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found." });
+
+    user.customPermissions = customPermissions;
+    await user.save();
+
+    return res.json({
+      message: "User permissions updated.",
+      userId: user._id,
+      customPermissions: user.customPermissions,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── GET /api/admin/support-tickets ──────────────────────────────────────────
+const getAllSupportTickets = async (req, res, next) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+    const { status, priority, search } = req.query;
+
+    const query = {};
+    if (status) query.status = status;
+    if (priority) query.priority = priority;
+    if (search) {
+      query.$or = [
+        { subject: new RegExp(search, "i") },
+        { email: new RegExp(search, "i") },
+        { ticketNumber: new RegExp(search, "i") },
+      ];
+    }
+
+    const [tickets, total] = await Promise.all([
+      SupportTicket.find(query)
+        .populate("user", "firstName lastName email")
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      SupportTicket.countDocuments(query),
+    ]);
+
+    return res.json({
+      tickets,
+      pagination: { total, totalPages: Math.ceil(total / limit), currentPage: page, limit },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── GET /api/admin/support-tickets/:id ──────────────────────────────────────
+const getSupportTicketById = async (req, res, next) => {
+  try {
+    const ticket = await SupportTicket.findById(req.params.id).populate("user", "firstName lastName email");
+    if (!ticket) return res.status(404).json({ message: "Ticket not found." });
+    return res.json({ ticket });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── PATCH /api/admin/support-tickets/:id ────────────────────────────────────
+const updateSupportTicket = async (req, res, next) => {
+  try {
+    const { status, priority, replyMessage } = req.body;
+    const ticket = await SupportTicket.findById(req.params.id);
+    if (!ticket) return res.status(404).json({ message: "Ticket not found." });
+
+    if (status) ticket.status = status;
+    if (priority) ticket.priority = priority;
+
+    if (replyMessage?.trim()) {
+      ticket.replies.push({
+        author: req.user._id,
+        authorName: `${req.user.firstName} ${req.user.lastName}`,
+        message: replyMessage.trim(),
+        isStaff: true,
+      });
+    }
+
+    await ticket.save();
+    return res.json({ message: "Ticket updated.", ticket });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── GET /api/admin/tickets ───────────────────────────────────────────────────
+// Ticket (event ticket) management — view + void
+const getAllTickets = async (req, res, next) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+    const { status, eventId, search } = req.query;
+
+    const query = {};
+    if (status) query.status = status;
+    if (eventId) query.event = eventId;
+
+    const [tickets, total] = await Promise.all([
+      Ticket.find(query)
+        .populate("user", "firstName lastName email")
+        .populate("event", "title startDate")
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      Ticket.countDocuments(query),
+    ]);
+
+    return res.json({
+      tickets,
+      pagination: { total, totalPages: Math.ceil(total / limit), currentPage: page, limit },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── PATCH /api/admin/tickets/:id/void ───────────────────────────────────────
+const voidTicket = async (req, res, next) => {
+  try {
+    const ticket = await Ticket.findById(req.params.id);
+    if (!ticket) return res.status(404).json({ message: "Ticket not found." });
+    if (ticket.status === "voided") {
+      return res.status(400).json({ message: "Ticket is already voided." });
+    }
+
+    ticket.status = "voided";
+    await ticket.save();
+
+    return res.json({ message: "Ticket voided successfully.", ticketId: ticket._id });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── GET /api/admin/blog ──────────────────────────────────────────────────────
+const getAdminBlogPosts = async (req, res, next) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 10, 50);
+    const { status, search } = req.query;
+
+    const query = {};
+    if (status) query.status = status;
+    if (search) query.$or = [{ title: new RegExp(search, "i") }];
+
+    const [posts, total] = await Promise.all([
+      BlogPost.find(query)
+        .populate("author", "firstName lastName")
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .select("-content"),
+      BlogPost.countDocuments(query),
+    ]);
+
+    return res.json({
+      posts,
+      pagination: { total, totalPages: Math.ceil(total / limit), currentPage: page, limit },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── GET /api/admin/categories ────────────────────────────────────────────────
+const getAdminCategories = async (req, res, next) => {
+  try {
+    const categories = await Category.find().sort({ name: 1 });
+    return res.json({ categories });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export {
   getAllUsers,
   getUserById,
@@ -468,6 +662,7 @@ export {
   unsuspendUser,
   deleteUser,
   changeUserRole,
+  updateUserPermissions,
   requestOrganizer,
   getOrganizerRequests,
   approveOrganizer,
@@ -477,4 +672,11 @@ export {
   getAllOrders,
   getAnalytics,
   setupInitialAdmin,
+  getAllSupportTickets,
+  getSupportTicketById,
+  updateSupportTicket,
+  getAllTickets,
+  voidTicket,
+  getAdminBlogPosts,
+  getAdminCategories,
 };

@@ -20,6 +20,7 @@ import ticketRoutes from "./routes/ticket.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 import supportRoutes from "./routes/support.routes.js";
+import blogRoutes from "./routes/blog.routes.js";
 
 // const { CLIENT_URL } = env;
 
@@ -126,6 +127,7 @@ app.use("/api/tickets", ticketRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/support", supportRoutes);
+app.use("/api/blog", blogRoutes);
 
 // Error handling
 app.use(notFound);

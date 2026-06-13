@@ -27,8 +27,12 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["attendee", "organizer", "admin"],
+      enum: ["attendee", "organizer", "support_agent", "admin", "superadmin"],
       default: "attendee",
+    },
+    customPermissions: {
+      type: [String],
+      default: [],
     },
     favorites: [
       {
@@ -42,6 +46,20 @@ const userSchema = new mongoose.Schema(
     },
     avatar: String,
     phone: String,
+    bio: { type: String, maxlength: 500 },
+    socialLinks: {
+      website: String,
+      twitter: String,
+      linkedin: String,
+      instagram: String,
+    },
+    // 2FA (TOTP)
+    totpSecret: { type: String, select: false },
+    totpEnabled: { type: Boolean, default: false },
+    totpPendingSecret: { type: String, select: false },
+    backupCodes: { type: [String], select: false },
+    totpChallengeToken: { type: String, select: false },
+    totpChallengeExpires: { type: Date, select: false },
     refreshToken: String,
     verificationToken: String,
     verificationExpires: {
@@ -85,6 +103,11 @@ userSchema.methods.toJSON = function () {
   delete user.verificationExpires;
   delete user.resetPasswordToken;
   delete user.resetPasswordExpires;
+  delete user.totpSecret;
+  delete user.totpPendingSecret;
+  delete user.backupCodes;
+  delete user.totpChallengeToken;
+  delete user.totpChallengeExpires;
   return user;
 };
 
