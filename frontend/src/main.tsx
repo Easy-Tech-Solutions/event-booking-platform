@@ -7,7 +7,9 @@ import { store } from './app/store';
 import { fetchProfile } from './app/store/slices/authSlice';
 import './styles/index.css';
 
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
+const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+// loadStripe returns null if the key is empty, which is handled gracefully by Elements
+const stripePromise = stripeKey ? loadStripe(stripeKey) : null;
 
 // Bootstrap: if a token exists, fetch the user profile on app load
 if (localStorage.getItem('accessToken')) {
@@ -16,7 +18,7 @@ if (localStorage.getItem('accessToken')) {
 
 createRoot(document.getElementById('root')!).render(
   <Provider store={store}>
-    <Elements stripe={stripePromise}>
+    <Elements stripe={stripePromise} options={{ locale: 'en' }}>
       <App />
     </Elements>
   </Provider>
