@@ -14,10 +14,15 @@ import {
   changeEventStatus,
   getAllOrders,
   getAnalytics,
+  setupInitialAdmin,
 } from "../controllers/admin.controller.js";
 
 const router = express.Router();
 
+// One-time bootstrap — only works when no admin exists; requires login only
+router.post("/setup", authenticate, setupInitialAdmin);
+
+// All routes below require admin role
 router.use(authenticate, authorize("admin"));
 
 // ── User Management ───────────────────────────────────────────────────────────

@@ -16,8 +16,11 @@ export function EventCard({ event }: EventCardProps) {
   // Support both backend shape (_id, startDate, organizer.firstName) and mock shape (id, date, organizer.name)
   const eventId = event._id || event.id;
   const dateStr = event.startDate || event.date;
-  const price = event.ticketTypes?.[0]?.price ?? event.price ?? 0;
-  const isFree = price === 0;
+  // minPrice comes from the list endpoint (aggregated); ticketTypes[0].price is from the detail endpoint
+  // null means "no ticket types created yet" — we never assume Free in that case
+  const rawPrice = event.minPrice ?? event.ticketTypes?.[0]?.price ?? event.price ?? null;
+  const isFree = rawPrice === 0;
+  const hasPrice = rawPrice !== null;
   const organizerName = event.organizer?.firstName
     ? `${event.organizer.firstName} ${event.organizer.lastName || ''}`.trim()
     : event.organizer?.name || 'Organizer';
@@ -49,7 +52,7 @@ export function EventCard({ event }: EventCardProps) {
       <div className="p-4" onClick={() => navigate(`/event/${eventId}`)}>
         <div className="flex items-center gap-2 mb-2">
           {categoryName && <Badge variant="secondary">{categoryName}</Badge>}
-          {isFree && <Badge className="bg-[#004406]/10 text-[#004406] border border-[#004406]/20">Free</Badge>}
+          {hasPrice && isFree && <Badge className="bg-[#004406]/10 text-[#004406] border border-[#004406]/20">Free</Badge>}
         </div>
 
         <h3 className="font-semibold mb-2 line-clamp-2">{event.title}</h3>
@@ -75,12 +78,14 @@ export function EventCard({ event }: EventCardProps) {
 
         <div className="flex items-center justify-between pt-3 border-t">
           <div>
-            {isFree ? (
+            {!hasPrice ? (
+              <span className="text-sm text-muted-foreground">View for pricing</span>
+            ) : isFree ? (
               <span className="font-semibold text-[#004406]">Free</span>
             ) : (
               <div>
-                <span className="text-sm text-muted-foreground">From</span>
-                <span className="ml-1 font-semibold text-lg">${price.toFixed(2)}</span>
+                <span className="text-sm text-muted-foreground">From </span>
+                <span className="font-semibold text-lg">${(rawPrice as number).toFixed(2)}</span>
               </div>
             )}
           </div>

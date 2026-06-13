@@ -55,14 +55,22 @@ export function EventDetails() {
   }
 
   if (error || !event) {
+    const isNetworkError = error?.includes('unreachable') || error?.includes('waking up');
     return (
       <div className="min-h-screen flex flex-col bg-gray-50">
         <Navbar />
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold mb-2">Event Not Found</h2>
-            <p className="text-muted-foreground mb-4">{error || 'This event does not exist or has been removed.'}</p>
-            <Button onClick={() => navigate('/discover')}>Browse Events</Button>
+          <div className="text-center max-w-md px-4">
+            <h2 className="text-2xl font-bold mb-2">{isNetworkError ? 'Server Waking Up' : 'Event Not Found'}</h2>
+            <p className="text-muted-foreground mb-6">{error || 'This event does not exist or has been removed.'}</p>
+            <div className="flex gap-3 justify-center">
+              {id && (
+                <Button variant="outline" onClick={() => dispatch(fetchEventById(id))}>
+                  Try Again
+                </Button>
+              )}
+              <Button className="bg-[#004406] hover:bg-[#003305] text-white" onClick={() => navigate('/discover')}>Browse Events</Button>
+            </div>
           </div>
         </div>
       </div>
