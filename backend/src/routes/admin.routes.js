@@ -23,6 +23,18 @@ import {
   voidTicket,
   getAdminBlogPosts,
   getAdminCategories,
+  getCustomRoles,
+  createCustomRole,
+  updateCustomRole,
+  deleteCustomRole,
+  assignCustomRole,
+  getPermissions,
+  createPermission,
+  updatePermission,
+  deletePermission,
+  getPayouts,
+  calculatePayouts,
+  updatePayoutStatus,
 } from "../controllers/admin.controller.js";
 
 const router = express.Router();
@@ -71,5 +83,23 @@ router.get("/blog", getAdminBlogPosts);
 
 // ── Categories ────────────────────────────────────────────────────────────────
 router.get("/categories", getAdminCategories);
+
+// ── Custom Roles ──────────────────────────────────────────────────────────────
+router.get("/custom-roles", getCustomRoles);
+router.post("/custom-roles", authorize("admin", "superadmin"), createCustomRole);
+router.put("/custom-roles/:id", authorize("admin", "superadmin"), updateCustomRole);
+router.delete("/custom-roles/:id", authorize("admin", "superadmin"), deleteCustomRole);
+router.patch("/users/:id/custom-role", authorize("admin", "superadmin"), assignCustomRole);
+
+// ── Permissions ───────────────────────────────────────────────────────────────
+router.get("/permissions", getPermissions);
+router.post("/permissions", authorize("admin", "superadmin"), createPermission);
+router.put("/permissions/:id", authorize("admin", "superadmin"), updatePermission);
+router.delete("/permissions/:id", authorize("admin", "superadmin"), deletePermission);
+
+// ── Payouts ───────────────────────────────────────────────────────────────────
+router.get("/payouts", authorize("admin", "superadmin"), getPayouts);
+router.post("/payouts/calculate", authorize("admin", "superadmin"), calculatePayouts);
+router.patch("/payouts/:id", authorize("admin", "superadmin"), updatePayoutStatus);
 
 export default router;

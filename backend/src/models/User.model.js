@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
+import Role from "./Role.model.js";
 
 const userSchema = new mongoose.Schema(
   {
@@ -33,6 +34,12 @@ const userSchema = new mongoose.Schema(
     customPermissions: {
       type: [String],
       default: [],
+    },
+    // If set, this custom role's permissions are used instead of the system role's permissions
+    customRole: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Role',
+      default: null,
     },
     favorites: [
       {

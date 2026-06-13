@@ -47,4 +47,25 @@ const uploadEventImage = (fileBuffer, mimeType) => {
   });
 };
 
-export { uploadEventImage, hasCloudinaryCredentials };
+// Generic upload for any folder (blog, avatars, etc.)
+const uploadImage = (fileBuffer, mimeType, folder = "general") => {
+  if (!hasCloudinaryCredentials()) {
+    throw new Error("Cloudinary credentials are missing.");
+  }
+  if (!fileBuffer?.length) {
+    throw new Error("Invalid image buffer.");
+  }
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: `event-booking-platform/${folder}`,
+        resource_type: "image",
+        unique_filename: true,
+      },
+      (error, result) => (error ? reject(error) : resolve(result)),
+    );
+    stream.end(fileBuffer);
+  });
+};
+
+export { uploadEventImage, uploadImage, hasCloudinaryCredentials };

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router';
 import { Navbar } from '../components/Navbar';
+import { RichEditor } from '../components/RichEditor';
 import { Card } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -30,6 +31,7 @@ export function AdminDashboard() {
     { id: 'categories', label: 'Categories', icon: Tag, path: '/admin/categories' },
     { id: 'blog', label: 'Blog', icon: BookOpen, path: '/admin/blog' },
     { id: 'roles', label: 'Roles & Permissions', icon: ShieldCheck, path: '/admin/roles' },
+    { id: 'payouts', label: 'Payouts', icon: DollarSign, path: '/admin/payouts' },
     { id: 'reports', label: 'Reports', icon: FileText, path: '/admin/reports' },
   ];
 
@@ -68,6 +70,7 @@ export function AdminDashboard() {
               <Route path="categories" element={<CategoriesManagement />} />
               <Route path="blog" element={<BlogManagement />} />
               <Route path="roles" element={<RolesPermissions />} />
+              <Route path="payouts" element={<PayoutsManagement />} />
               <Route path="reports" element={<Reports />} />
               <Route index element={<PlatformOverview />} />
             </Routes>
@@ -660,6 +663,7 @@ function CategoriesManagement() {
 // ── Blog Management ───────────────────────────────────────────────────────────
 function BlogManagement() {
   const navigate = useNavigate();
+  const coverInputRef = useRef<HTMLInputElement>(null);
   const [posts, setPosts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -667,6 +671,7 @@ function BlogManagement() {
   const [form, setForm] = useState({ title: '', excerpt: '', content: '', category: '', coverImage: '', status: 'draft', tags: '' });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
+  const [coverUploading, setCoverUploading] = useState(false);
 
   const reload = () => {
     setIsLoading(true);
@@ -677,6 +682,20 @@ function BlogManagement() {
   };
 
   useEffect(() => { reload(); }, [statusFilter]);
+
+  const handleCoverUpload = async (file: File) => {
+    setCoverUploading(true);
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const res = await apiClient.post('/upload?folder=blog', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setForm((f) => ({ ...f, coverImage: res.data.url }));
+    } catch {
+      setMsg('Cover image upload failed.');
+    } finally {
+      setCoverUploading(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!form.title.trim() || !form.content.trim()) { setMsg('Title and content are required.'); return; }
@@ -717,31 +736,78 @@ function BlogManagement() {
           <h2 className="text-2xl font-bold">{editingId ? 'Edit Post' : 'New Blog Post'}</h2>
           <Button variant="outline" onClick={() => { setCreating(false); setEditingId(null); setMsg(''); }}>Cancel</Button>
         </div>
-        <Card className="p-6 space-y-4">
-          <div><Label>Title</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Post title" /></div>
-          <div><Label>Excerpt</Label><Input value={form.excerpt} onChange={(e) => setForm({ ...form, excerpt: e.target.value })} placeholder="Short summary" /></div>
-          <div><Label>Content (HTML or plain text)</Label><Textarea value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} rows={10} placeholder="Full post content…" /></div>
-          <div className="grid grid-cols-2 gap-4">
-            <div><Label>Category</Label><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="e.g. Technology" /></div>
-            <div><Label>Tags (comma-separated)</Label><Input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="tag1, tag2" /></div>
-          </div>
-          <div><Label>Cover Image URL</Label><Input value={form.coverImage} onChange={(e) => setForm({ ...form, coverImage: e.target.value })} placeholder="https://…" /></div>
-          <div>
-            <Label>Status</Label>
-            <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="published">Published</SelectItem>
-                <SelectItem value="archived">Archived</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="space-y-4">
+          <Card className="p-6 space-y-4">
+            <div><Label>Title</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Post title" /></div>
+            <div><Label>Excerpt</Label><Input value={form.excerpt} onChange={(e) => setForm({ ...form, excerpt: e.target.value })} placeholder="Short summary shown in listing" /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><Label>Category</Label><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="e.g. Technology" /></div>
+              <div><Label>Tags (comma-separated)</Label><Input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="tag1, tag2" /></div>
+            </div>
+
+            {/* Cover image upload */}
+            <div>
+              <Label className="mb-1.5 block">Cover Image</Label>
+              <input
+                ref={coverInputRef}
+                type="file"
+                accept="image/*"
+                aria-label="Upload cover image"
+                title="Upload cover image"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleCoverUpload(f); }}
+              />
+              {form.coverImage ? (
+                <div className="relative rounded-lg overflow-hidden aspect-video max-h-48 bg-gray-100 group">
+                  <img src={form.coverImage} alt="Cover" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => coverInputRef.current?.click()} disabled={coverUploading}>
+                      {coverUploading ? 'Uploading…' : 'Change'}
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={() => setForm((f) => ({ ...f, coverImage: '' }))}>Remove</Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => coverInputRef.current?.click()}
+                  disabled={coverUploading}
+                  className="w-full border-2 border-dashed border-gray-300 rounded-lg py-8 flex flex-col items-center gap-2 text-muted-foreground hover:border-[#004406]/50 hover:text-[#004406] transition-colors"
+                >
+                  <Plus className="w-6 h-6" />
+                  <span className="text-sm">{coverUploading ? 'Uploading…' : 'Upload cover image'}</span>
+                </button>
+              )}
+            </div>
+
+            <div>
+              <Label>Status</Label>
+              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="published">Published</SelectItem>
+                  <SelectItem value="archived">Archived</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </Card>
+
+          <Card className="p-6">
+            <Label className="mb-2 block">Content</Label>
+            <RichEditor
+              value={form.content}
+              onChange={(html) => setForm((f) => ({ ...f, content: html }))}
+              placeholder="Write your blog post here…"
+              minHeight={360}
+            />
+          </Card>
+
           {msg && <p className="text-sm text-muted-foreground">{msg}</p>}
           <Button onClick={handleSubmit} className="bg-[#004406] hover:bg-[#003305] text-white">
             {editingId ? 'Update Post' : 'Create Post'}
           </Button>
-        </Card>
+        </div>
       </div>
     );
   }
@@ -797,101 +863,789 @@ function BlogManagement() {
 }
 
 // ── Roles & Permissions ───────────────────────────────────────────────────────
-function RolesPermissions() {
-  const [users, setUsers] = useState<any[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selected, setSelected] = useState<any>(null);
-  const [customPerms, setCustomPerms] = useState<string[]>([]);
-  const [msg, setMsg] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
 
-  const ALL_PERMISSIONS = [
-    'view_users', 'edit_users', 'delete_users', 'suspend_users', 'change_user_roles',
+// Fallback used before API loads — keeps checkboxes usable immediately
+const FALLBACK_PERMISSIONS = [
+  { key: 'view_users', label: 'View Users', group: 'Users', description: '' },
+  { key: 'edit_users', label: 'Edit Users', group: 'Users', description: '' },
+  { key: 'delete_users', label: 'Delete Users', group: 'Users', description: '' },
+  { key: 'suspend_users', label: 'Suspend Users', group: 'Users', description: '' },
+  { key: 'change_user_roles', label: 'Change User Roles', group: 'Users', description: '' },
+  { key: 'view_all_events', label: 'View All Events', group: 'Events', description: '' },
+  { key: 'edit_any_event', label: 'Edit Any Event', group: 'Events', description: '' },
+  { key: 'delete_any_event', label: 'Delete Any Event', group: 'Events', description: '' },
+  { key: 'change_event_status', label: 'Change Event Status', group: 'Events', description: '' },
+  { key: 'approve_organizers', label: 'Approve Organizers', group: 'Events', description: '' },
+  { key: 'manage_categories', label: 'Manage Categories', group: 'Content', description: '' },
+  { key: 'create_blog_post', label: 'Create Blog Post', group: 'Content', description: '' },
+  { key: 'edit_any_blog_post', label: 'Edit Any Blog Post', group: 'Content', description: '' },
+  { key: 'delete_any_blog_post', label: 'Delete Any Blog Post', group: 'Content', description: '' },
+  { key: 'publish_blog_post', label: 'Publish Blog Post', group: 'Content', description: '' },
+  { key: 'view_all_support_tickets', label: 'View Support Tickets', group: 'Support', description: '' },
+  { key: 'reply_support_ticket', label: 'Reply to Tickets', group: 'Support', description: '' },
+  { key: 'close_support_ticket', label: 'Close Tickets', group: 'Support', description: '' },
+  { key: 'view_all_orders', label: 'View All Orders', group: 'Finance', description: '' },
+  { key: 'refund_orders', label: 'Refund Orders', group: 'Finance', description: '' },
+  { key: 'view_analytics', label: 'View Analytics', group: 'Finance', description: '' },
+  { key: 'manage_roles', label: 'Manage Roles', group: 'Admin', description: '' },
+  { key: 'manage_employees', label: 'Manage Employees', group: 'Admin', description: '' },
+];
+
+const SYSTEM_ROLE_PERMISSIONS: Record<string, string[]> = {
+  attendee: [],
+  organizer: [],
+  support_agent: ['view_all_support_tickets', 'reply_support_ticket', 'close_support_ticket', 'view_all_orders'],
+  admin: [
+    'view_users', 'edit_users', 'suspend_users', 'change_user_roles',
     'view_all_events', 'edit_any_event', 'delete_any_event', 'change_event_status', 'approve_organizers',
     'manage_categories', 'create_blog_post', 'edit_any_blog_post', 'delete_any_blog_post', 'publish_blog_post',
     'view_all_support_tickets', 'reply_support_ticket', 'close_support_ticket',
-    'view_all_orders', 'refund_orders', 'view_analytics', 'manage_roles', 'manage_employees',
-  ];
+    'view_all_orders', 'refund_orders', 'view_analytics', 'manage_employees',
+  ],
+  superadmin: FALLBACK_PERMISSIONS.map((p) => p.key),
+};
 
-  const search = () => {
-    if (!searchQuery.trim()) return;
+const SYSTEM_ROLE_DESCRIPTIONS: Record<string, string> = {
+  attendee: 'Regular users who can browse and purchase tickets.',
+  organizer: 'Can create and manage their own events.',
+  support_agent: 'Handles customer support tickets and order queries.',
+  admin: 'Full platform management except superadmin operations.',
+  superadmin: 'Unrestricted access to everything.',
+};
+
+function PermissionCheckboxList({
+  selected, onChange, allPermissions,
+}: {
+  selected: string[];
+  onChange: (p: string[]) => void;
+  allPermissions: { key: string; label: string; group: string; description?: string }[];
+}) {
+  const groups = Array.from(new Set(allPermissions.map((p) => p.group)));
+  const toggle = (key: string) =>
+    onChange(selected.includes(key) ? selected.filter((p) => p !== key) : [...selected, key]);
+  const toggleGroup = (group: string) => {
+    const groupKeys = allPermissions.filter((p) => p.group === group).map((p) => p.key);
+    const allOn = groupKeys.every((k) => selected.includes(k));
+    onChange(allOn ? selected.filter((p) => !groupKeys.includes(p)) : [...new Set([...selected, ...groupKeys])]);
+  };
+  return (
+    <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+      {groups.map((group) => {
+        const groupPerms = allPermissions.filter((p) => p.group === group);
+        const allOn = groupPerms.every((p) => selected.includes(p.key));
+        return (
+          <div key={group}>
+            <label className="flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer mb-1.5">
+              <input type="checkbox" checked={allOn} onChange={() => toggleGroup(group)} className="rounded" />
+              {group}
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 pl-4">
+              {groupPerms.map(({ key, label, description }) => (
+                <label key={key} className="flex items-start gap-1.5 cursor-pointer group">
+                  <input type="checkbox" checked={selected.includes(key)} onChange={() => toggle(key)} className="rounded mt-0.5" />
+                  <div>
+                    <span className="text-xs font-medium">{label}</span>
+                    {description && <span className="block text-[10px] text-muted-foreground leading-tight">{description}</span>}
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function RolesPermissions() {
+  const [activeTab, setActiveTab] = useState<'custom' | 'system' | 'permissions' | 'assign'>('custom');
+
+  // ── Shared: DB permissions list ───────────────────────────────────────────────
+  const [allPerms, setAllPerms] = useState(FALLBACK_PERMISSIONS);
+
+  const reloadPerms = () => {
+    apiClient.get('/admin/permissions')
+      .then((r) => { if (r.data.permissions?.length) setAllPerms(r.data.permissions); })
+      .catch(() => {});
+  };
+  useEffect(() => { reloadPerms(); }, []);
+
+  // ── Custom Roles ──────────────────────────────────────────────────────────────
+  const [roles, setRoles] = useState<any[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(true);
+  const [editingRole, setEditingRole] = useState<any | null>(null);
+  const [showRoleForm, setShowRoleForm] = useState(false);
+  const [expandedRole, setExpandedRole] = useState<string | null>(null);
+  const [roleForm, setRoleForm] = useState({ name: '', description: '', permissions: [] as string[] });
+  const [roleMsg, setRoleMsg] = useState('');
+
+  const reloadRoles = () => {
+    setRolesLoading(true);
+    apiClient.get('/admin/custom-roles')
+      .then((r) => setRoles(r.data.roles || []))
+      .catch(() => {})
+      .finally(() => setRolesLoading(false));
+  };
+  useEffect(() => { reloadRoles(); }, []);
+
+  const openNewRole = () => {
+    setEditingRole(null);
+    setRoleForm({ name: '', description: '', permissions: [] });
+    setRoleMsg('');
+    setShowRoleForm(true);
+  };
+  const openEditRole = (role: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingRole(role);
+    setRoleForm({ name: role.name, description: role.description || '', permissions: role.permissions || [] });
+    setRoleMsg('');
+    setShowRoleForm(true);
+  };
+  const handleRoleSave = async () => {
+    if (!roleForm.name.trim()) { setRoleMsg('Role name is required.'); return; }
+    try {
+      if (editingRole) {
+        await apiClient.put(`/admin/custom-roles/${editingRole._id}`, roleForm);
+      } else {
+        await apiClient.post('/admin/custom-roles', roleForm);
+      }
+      setShowRoleForm(false);
+      setEditingRole(null);
+      reloadRoles();
+    } catch (e: any) {
+      setRoleMsg(e.response?.data?.message || 'Error saving role.');
+    }
+  };
+  const handleRoleDelete = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm('Delete this role? Users assigned to it will lose these permissions.')) return;
+    await apiClient.delete(`/admin/custom-roles/${id}`).catch(() => null);
+    reloadRoles();
+  };
+
+  // ── System Roles ──────────────────────────────────────────────────────────────
+  const [expandedSysRole, setExpandedSysRole] = useState<string | null>(null);
+
+  // ── Permissions Management ────────────────────────────────────────────────────
+  const [permFilter, setPermFilter] = useState('');
+  const [showPermForm, setShowPermForm] = useState(false);
+  const [editingPerm, setEditingPerm] = useState<any | null>(null);
+  const [permForm, setPermForm] = useState({ key: '', label: '', description: '', group: '' });
+  const [permMsg, setPermMsg] = useState('');
+
+  const handlePermSave = async () => {
+    if (!permForm.key.trim() || !permForm.label.trim() || !permForm.group.trim()) {
+      setPermMsg('Key, label, and group are required.'); return;
+    }
+    try {
+      if (editingPerm) {
+        await apiClient.put(`/admin/permissions/${editingPerm._id}`, permForm);
+      } else {
+        await apiClient.post('/admin/permissions', permForm);
+      }
+      setShowPermForm(false);
+      setEditingPerm(null);
+      setPermForm({ key: '', label: '', description: '', group: '' });
+      setPermMsg('');
+      reloadPerms();
+    } catch (e: any) {
+      setPermMsg(e.response?.data?.message || 'Error saving permission.');
+    }
+  };
+  const handlePermDelete = async (perm: any) => {
+    if (perm.isSystem) return;
+    if (!confirm(`Delete permission "${perm.key}"? It will be removed from all custom roles.`)) return;
+    await apiClient.delete(`/admin/permissions/${perm._id}`).catch(() => null);
+    reloadPerms();
+  };
+  const openEditPerm = (perm: any) => {
+    setEditingPerm(perm);
+    setPermForm({ key: perm.key, label: perm.label, description: perm.description || '', group: perm.group });
+    setPermMsg('');
+    setShowPermForm(true);
+  };
+
+  // ── Assign to User ────────────────────────────────────────────────────────────
+  const [userSearch, setUserSearch] = useState('');
+  const [userResults, setUserResults] = useState<any[]>([]);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [selectedRole, setSelectedRole] = useState<string>('');
+  const [customPerms, setCustomPerms] = useState<string[]>([]);
+  const [assignMsg, setAssignMsg] = useState('');
+  const [userLoading, setUserLoading] = useState(false);
+
+  const searchUsers = () => {
+    if (!userSearch.trim()) return;
+    setUserLoading(true);
+    apiClient.get('/admin/users', { params: { search: userSearch, limit: 8 } })
+      .then((r) => setUserResults(r.data.users || []))
+      .catch(() => {})
+      .finally(() => setUserLoading(false));
+  };
+  const selectUser = (u: any) => {
+    setSelectedUser(u);
+    setSelectedRole(u.customRole?._id || u.customRole || '');
+    setCustomPerms(u.customPermissions || []);
+    setAssignMsg('');
+  };
+  const handleAssignRole = async () => {
+    if (!selectedUser) return;
+    try {
+      await apiClient.patch(`/admin/users/${selectedUser._id}/custom-role`, { customRoleId: selectedRole || null });
+      await apiClient.patch(`/admin/users/${selectedUser._id}/permissions`, { customPermissions: customPerms });
+      setAssignMsg('Saved.');
+      setUserResults((prev) => prev.map((u) => u._id === selectedUser._id
+        ? { ...u, customRole: selectedRole || null, customPermissions: customPerms } : u));
+    } catch (e: any) {
+      setAssignMsg(e.response?.data?.message || 'Error saving.');
+    }
+  };
+
+  const TABS = [
+    { id: 'custom', label: 'Custom Roles' },
+    { id: 'system', label: 'System Roles' },
+    { id: 'permissions', label: 'Permissions' },
+    { id: 'assign', label: 'Assign to User' },
+  ] as const;
+
+  return (
+    <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold">Roles & Permissions</h2>
+        <p className="text-muted-foreground text-sm">Manage roles, define permissions, and assign them to users</p>
+      </div>
+
+      <div className="flex flex-wrap gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${activeTab === tab.id ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Custom Roles Tab ── */}
+      {activeTab === 'custom' && (
+        <div>
+          {showRoleForm ? (
+            <Card className="p-6 mb-4">
+              <h3 className="font-semibold mb-4">{editingRole ? `Edit "${editingRole.name}"` : 'New Custom Role'}</h3>
+              <div className="space-y-4">
+                <div>
+                  <Label>Role Name</Label>
+                  <Input value={roleForm.name} onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value })} placeholder="e.g. Content Moderator" />
+                </div>
+                <div>
+                  <Label>Description</Label>
+                  <Input value={roleForm.description} onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })} placeholder="What can this role do?" />
+                </div>
+                <div>
+                  <Label className="mb-2 block">Permissions</Label>
+                  <PermissionCheckboxList
+                    selected={roleForm.permissions}
+                    onChange={(perms) => setRoleForm({ ...roleForm, permissions: perms })}
+                    allPermissions={allPerms}
+                  />
+                </div>
+                {roleMsg && <p className="text-sm text-red-600">{roleMsg}</p>}
+                <div className="flex gap-2 pt-2">
+                  <Button onClick={handleRoleSave} className="bg-[#004406] hover:bg-[#003305] text-white">
+                    {editingRole ? 'Update Role' : 'Create Role'}
+                  </Button>
+                  <Button variant="outline" onClick={() => { setShowRoleForm(false); setRoleMsg(''); }}>Cancel</Button>
+                </div>
+              </div>
+            </Card>
+          ) : (
+            <div className="flex justify-end mb-4">
+              <Button onClick={openNewRole} className="bg-[#004406] hover:bg-[#003305] text-white">
+                <Plus className="w-4 h-4 mr-1" /> New Role
+              </Button>
+            </div>
+          )}
+
+          {rolesLoading ? (
+            <div className="h-24 bg-gray-100 animate-pulse rounded" />
+          ) : roles.length === 0 ? (
+            <Card className="p-8 text-center text-muted-foreground">No custom roles yet. Create one to get started.</Card>
+          ) : (
+            <div className="space-y-2">
+              {roles.map((role) => {
+                const expanded = expandedRole === role._id;
+                return (
+                  <Card key={role._id} className="overflow-hidden">
+                    <div
+                      className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                      onClick={() => setExpandedRole(expanded ? null : role._id)}
+                    >
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <ChevronDown className={`w-4 h-4 text-muted-foreground flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold">{role.name}</p>
+                            {role.isSystem && <Badge variant="outline" className="text-xs">System</Badge>}
+                            <Badge variant="secondary" className="text-xs">{role.permissions.length} perms</Badge>
+                          </div>
+                          {role.description && <p className="text-xs text-muted-foreground truncate">{role.description}</p>}
+                        </div>
+                      </div>
+                      {!role.isSystem && (
+                        <div className="flex gap-1 flex-shrink-0 ml-2">
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={(e) => openEditRole(role, e)}>
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500" onClick={(e) => handleRoleDelete(role._id, e)}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    {expanded && (
+                      <div className="px-4 pb-4 border-t bg-gray-50/50">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-3 mb-2">Permissions</p>
+                        {role.permissions.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">No permissions assigned.</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {role.permissions.map((pKey: string) => {
+                              const meta = allPerms.find((p) => p.key === pKey);
+                              return (
+                                <span key={pKey} title={meta?.description || pKey} className="text-xs bg-white border rounded px-2 py-0.5 font-mono">
+                                  {meta?.label || pKey}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── System Roles Tab ── */}
+      {activeTab === 'system' && (
+        <div className="space-y-2">
+          {Object.entries(SYSTEM_ROLE_DESCRIPTIONS).map(([roleName, description]) => {
+            const perms = SYSTEM_ROLE_PERMISSIONS[roleName] || [];
+            const expanded = expandedSysRole === roleName;
+            return (
+              <Card key={roleName} className="overflow-hidden">
+                <div
+                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                  onClick={() => setExpandedSysRole(expanded ? null : roleName)}
+                >
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <ChevronDown className={`w-4 h-4 text-muted-foreground flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold capitalize">{roleName.replace('_', ' ')}</p>
+                        <Badge variant="outline" className="text-xs">System</Badge>
+                        <Badge variant="secondary" className="text-xs">
+                          {roleName === 'superadmin' ? 'All' : perms.length} perms
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{description}</p>
+                    </div>
+                  </div>
+                </div>
+                {expanded && (
+                  <div className="px-4 pb-4 border-t bg-gray-50/50">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-3 mb-2">Permissions</p>
+                    {roleName === 'superadmin' ? (
+                      <p className="text-xs text-[#004406] font-medium">Unrestricted — all permissions granted automatically.</p>
+                    ) : perms.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">No permissions (attendees / organizers manage their own content).</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {perms.map((pKey) => {
+                          const meta = allPerms.find((p) => p.key === pKey);
+                          return (
+                            <span key={pKey} title={meta?.description || pKey} className="text-xs bg-white border rounded px-2 py-0.5 font-mono">
+                              {meta?.label || pKey}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {roleName !== 'superadmin' && roleName !== 'attendee' && (
+                      <p className="text-xs text-muted-foreground mt-3">
+                        To override a system role's permissions for specific users, create a Custom Role and assign it to them.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Permissions Tab ── */}
+      {activeTab === 'permissions' && (
+        <div>
+          {showPermForm ? (
+            <Card className="p-6 mb-4">
+              <h3 className="font-semibold mb-4">{editingPerm ? `Edit "${editingPerm.label}"` : 'New Permission'}</h3>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Key <span className="text-muted-foreground text-xs">(snake_case)</span></Label>
+                    <Input
+                      value={permForm.key}
+                      onChange={(e) => setPermForm({ ...permForm, key: e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') })}
+                      placeholder="e.g. manage_inventory"
+                      disabled={!!editingPerm}
+                    />
+                  </div>
+                  <div>
+                    <Label>Label</Label>
+                    <Input value={permForm.label} onChange={(e) => setPermForm({ ...permForm, label: e.target.value })} placeholder="e.g. Manage Inventory" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Group / Resource</Label>
+                    <Input value={permForm.group} onChange={(e) => setPermForm({ ...permForm, group: e.target.value })} placeholder="e.g. Inventory" />
+                    <p className="text-xs text-muted-foreground mt-0.5">Which part of the app this controls</p>
+                  </div>
+                  <div>
+                    <Label>Description</Label>
+                    <Input value={permForm.description} onChange={(e) => setPermForm({ ...permForm, description: e.target.value })} placeholder="What this permission allows" />
+                  </div>
+                </div>
+                {permMsg && <p className="text-sm text-red-600">{permMsg}</p>}
+                <div className="flex gap-2">
+                  <Button onClick={handlePermSave} className="bg-[#004406] hover:bg-[#003305] text-white">
+                    {editingPerm ? 'Update' : 'Create'}
+                  </Button>
+                  <Button variant="outline" onClick={() => { setShowPermForm(false); setEditingPerm(null); setPermMsg(''); }}>Cancel</Button>
+                </div>
+              </div>
+            </Card>
+          ) : (
+            <div className="flex items-center justify-between mb-4">
+              <Input
+                placeholder="Filter permissions…"
+                value={permFilter}
+                onChange={(e) => setPermFilter(e.target.value)}
+                className="max-w-xs"
+              />
+              <Button onClick={() => { setShowPermForm(true); setEditingPerm(null); setPermForm({ key: '', label: '', description: '', group: '' }); }} className="bg-[#004406] hover:bg-[#003305] text-white">
+                <Plus className="w-4 h-4 mr-1" /> New Permission
+              </Button>
+            </div>
+          )}
+
+          {!showPermForm && (() => {
+            const groups = Array.from(new Set(allPerms.map((p) => p.group)));
+            const filtered = allPerms.filter((p) =>
+              !permFilter || p.key.includes(permFilter.toLowerCase()) || p.label.toLowerCase().includes(permFilter.toLowerCase())
+            );
+            return (
+              <div className="space-y-4">
+                {groups.filter((g) => filtered.some((p) => p.group === g)).map((group) => (
+                  <div key={group}>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{group}</p>
+                    <div className="space-y-1">
+                      {filtered.filter((p) => p.group === group).map((perm: any) => (
+                        <div key={perm.key} className="flex items-center justify-between p-3 bg-white border rounded-lg">
+                          <div className="flex-1 min-w-0 mr-4">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{perm.key}</span>
+                              <span className="text-sm font-medium">{perm.label}</span>
+                              {perm.isSystem && <Badge variant="outline" className="text-xs">System</Badge>}
+                            </div>
+                            {perm.description && <p className="text-xs text-muted-foreground mt-0.5">{perm.description}</p>}
+                          </div>
+                          <div className="flex gap-1 flex-shrink-0">
+                            <Button
+                              variant="ghost" size="sm" className="h-7 w-7 p-0"
+                              onClick={() => openEditPerm(perm)}
+                              disabled={perm.isSystem}
+                              title={perm.isSystem ? 'System permissions cannot be edited' : 'Edit'}
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500"
+                              onClick={() => handlePermDelete(perm)}
+                              disabled={perm.isSystem}
+                              title={perm.isSystem ? 'System permissions cannot be deleted' : 'Delete'}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ── Assign to User Tab ── */}
+      {activeTab === 'assign' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <Card className="p-4">
+              <p className="text-sm font-medium mb-2">Search user</p>
+              <div className="flex gap-2">
+                <Input placeholder="Name or email…" value={userSearch} onChange={(e) => setUserSearch(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && searchUsers()} />
+                <Button onClick={searchUsers} variant="outline" disabled={userLoading}>
+                  {userLoading ? '…' : <Search className="w-4 h-4" />}
+                </Button>
+              </div>
+            </Card>
+            {userResults.length > 0 && (
+              <Card className="p-0 overflow-hidden">
+                <div className="divide-y">
+                  {userResults.map((u) => (
+                    <div key={u._id} onClick={() => selectUser(u)} className={`p-3 cursor-pointer hover:bg-gray-50 ${selectedUser?._id === u._id ? 'bg-[#004406]/5 border-l-4 border-[#004406]' : ''}`}>
+                      <p className="font-medium text-sm">{u.firstName} {u.lastName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {u.email} · <span className="font-medium">{u.role}</span>
+                        {u.customRole && <span className="text-[#004406]"> + {typeof u.customRole === 'object' ? u.customRole.name : 'custom role'}</span>}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </div>
+
+          {selectedUser ? (
+            <Card className="p-5 space-y-4">
+              <div>
+                <p className="font-semibold">{selectedUser.firstName} {selectedUser.lastName}</p>
+                <p className="text-xs text-muted-foreground">System role: <span className="font-semibold">{selectedUser.role}</span></p>
+              </div>
+              <div>
+                <Label className="mb-1.5 block">Custom Role</Label>
+                <Select value={selectedRole} onValueChange={setSelectedRole}>
+                  <SelectTrigger><SelectValue placeholder="No custom role (use system role)" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">No custom role</SelectItem>
+                    {roles.map((r) => (
+                      <SelectItem key={r._id} value={r._id}>{r.name} ({r.permissions.length} perms)</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">When set, replaces the system role's permission set.</p>
+              </div>
+              <div>
+                <Label className="mb-1.5 block">Additional Permissions</Label>
+                <p className="text-xs text-muted-foreground mb-2">Stack on top of the role's permissions.</p>
+                <PermissionCheckboxList selected={customPerms} onChange={setCustomPerms} allPermissions={allPerms} />
+              </div>
+              {assignMsg && <p className="text-sm text-[#004406]">{assignMsg}</p>}
+              <Button onClick={handleAssignRole} className="bg-[#004406] hover:bg-[#003305] text-white w-full">Save</Button>
+            </Card>
+          ) : (
+            <Card className="p-6 flex items-center justify-center text-muted-foreground text-sm">
+              Search for a user to assign a role
+            </Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Payouts ───────────────────────────────────────────────────────────────────
+function PayoutsManagement() {
+  const now = new Date();
+  const defaultPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const [period, setPeriod] = useState(defaultPeriod);
+  const [payouts, setPayouts] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [calculating, setCalculating] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [notesMap, setNotesMap] = useState<Record<string, string>>({});
+
+  const reload = (p = period, s = statusFilter) => {
     setIsLoading(true);
-    apiClient.get('/admin/users', { params: { search: searchQuery, limit: 10 } })
-      .then((r) => setUsers(r.data.users || []))
+    apiClient.get('/admin/payouts', { params: { period: p, ...(s !== 'all' ? { status: s } : {}) } })
+      .then((r) => setPayouts(r.data.payouts || []))
       .catch(() => {})
       .finally(() => setIsLoading(false));
   };
 
-  const selectUser = (u: any) => {
-    setSelected(u);
-    setCustomPerms(u.customPermissions || []);
+  useEffect(() => { reload(); }, [period, statusFilter]);
+
+  const handleCalculate = async () => {
+    setCalculating(true);
     setMsg('');
-  };
-
-  const togglePerm = (perm: string) => {
-    setCustomPerms((prev) => prev.includes(perm) ? prev.filter((p) => p !== perm) : [...prev, perm]);
-  };
-
-  const handleSave = async () => {
-    if (!selected) return;
     try {
-      await apiClient.patch(`/admin/users/${selected._id}/permissions`, { customPermissions: customPerms });
-      setMsg('Permissions saved.');
-      setUsers((prev) => prev.map((u) => u._id === selected._id ? { ...u, customPermissions: customPerms } : u));
+      const res = await apiClient.post('/admin/payouts/calculate', { period });
+      setMsg(`Calculated ${res.data.count} payout(s) for ${res.data.period}.`);
+      reload();
     } catch (e: any) {
-      setMsg(e.response?.data?.message || 'Error saving.');
+      setMsg(e.response?.data?.message || 'Error calculating payouts.');
+    } finally {
+      setCalculating(false);
     }
   };
+
+  const handleStatusUpdate = async (id: string, status: string) => {
+    setUpdatingId(id);
+    try {
+      await apiClient.patch(`/admin/payouts/${id}`, { status, notes: notesMap[id] });
+      reload();
+    } catch (e: any) {
+      setMsg(e.response?.data?.message || 'Error updating payout.');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const STATUS_COLORS: Record<string, string> = {
+    pending: 'bg-yellow-100 text-yellow-800',
+    processing: 'bg-blue-100 text-blue-800',
+    paid: 'bg-green-100 text-green-800',
+    failed: 'bg-red-100 text-red-800',
+  };
+
+  const totalGross = payouts.reduce((s, p) => s + p.grossRevenue, 0);
+  const totalNet = payouts.reduce((s, p) => s + p.netAmount, 0);
+  const totalFee = payouts.reduce((s, p) => s + p.platformFee, 0);
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <div><h2 className="text-2xl font-bold">Roles & Permissions</h2><p className="text-muted-foreground text-sm">Assign roles and custom permissions to users</p></div>
+        <div>
+          <h2 className="text-2xl font-bold">Organizer Payouts</h2>
+          <p className="text-muted-foreground text-sm">Calculate and track monthly payouts to event organizers</p>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="space-y-4">
-          <Card className="p-4">
-            <div className="flex gap-2">
-              <Input placeholder="Search user by name or email…" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} />
-              <Button onClick={search} variant="outline">Search</Button>
-            </div>
-          </Card>
-          {users.length > 0 && (
-            <Card className="p-0 overflow-hidden">
-              <div className="divide-y">
-                {users.map((u) => (
-                  <div key={u._id} onClick={() => selectUser(u)} className={`p-3 cursor-pointer hover:bg-gray-50 ${selected?._id === u._id ? 'bg-[#004406]/5 border-l-4 border-[#004406]' : ''}`}>
-                    <p className="font-medium text-sm">{u.firstName} {u.lastName}</p>
-                    <p className="text-xs text-muted-foreground">{u.email} · {u.role}</p>
+      {/* Controls */}
+      <Card className="p-4 mb-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Label className="text-sm">Period</Label>
+            <Input
+              type="month"
+              value={period}
+              onChange={(e) => setPeriod(e.target.value)}
+              className="w-40"
+            />
+          </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="processing">Processing</SelectItem>
+              <SelectItem value="paid">Paid</SelectItem>
+              <SelectItem value="failed">Failed</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button onClick={handleCalculate} disabled={calculating} className="bg-[#004406] hover:bg-[#003305] text-white">
+            {calculating ? 'Calculating…' : 'Calculate Payouts'}
+          </Button>
+          {msg && <p className="text-sm text-muted-foreground">{msg}</p>}
+        </div>
+      </Card>
+
+      {/* Summary */}
+      {payouts.length > 0 && (
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          {[
+            { label: 'Gross Revenue', value: `$${totalGross.toFixed(2)}` },
+            { label: 'Platform Fees (10%)', value: `$${totalFee.toFixed(2)}` },
+            { label: 'Net to Organizers', value: `$${totalNet.toFixed(2)}`, highlight: true },
+          ].map(({ label, value, highlight }) => (
+            <Card key={label} className={`p-4 ${highlight ? 'border-[#004406]/30 bg-[#004406]/5' : ''}`}>
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className={`text-xl font-bold mt-1 ${highlight ? 'text-[#004406]' : ''}`}>{value}</p>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Payout list */}
+      {isLoading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => <div key={i} className="h-20 bg-gray-100 animate-pulse rounded" />)}
+        </div>
+      ) : payouts.length === 0 ? (
+        <Card className="p-8 text-center text-muted-foreground">
+          No payouts for this period. Click "Calculate Payouts" to compute from completed orders.
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {payouts.map((payout) => (
+            <Card key={payout._id} className="p-4">
+              <div className="flex flex-wrap items-start gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-semibold">{payout.organizer?.firstName} {payout.organizer?.lastName}</p>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[payout.status] || 'bg-gray-100'}`}>
+                      {payout.status}
+                    </span>
                   </div>
-                ))}
+                  <p className="text-xs text-muted-foreground">{payout.organizer?.email}</p>
+                  <div className="flex gap-4 mt-2 text-sm">
+                    <span>Gross: <span className="font-medium">${payout.grossRevenue.toFixed(2)}</span></span>
+                    <span>Fee: <span className="font-medium text-red-600">-${payout.platformFee.toFixed(2)}</span></span>
+                    <span>Net: <span className="font-medium text-[#004406]">${payout.netAmount.toFixed(2)}</span></span>
+                    <span className="text-muted-foreground">{payout.events?.length || 0} event(s)</span>
+                  </div>
+                  {payout.processedAt && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Processed {new Date(payout.processedAt).toLocaleDateString()} by {payout.processedBy?.firstName}
+                    </p>
+                  )}
+                </div>
+                {payout.status !== 'paid' && (
+                  <div className="flex flex-col gap-2 min-w-[200px]">
+                    <Input
+                      placeholder="Notes (optional)"
+                      value={notesMap[payout._id] || ''}
+                      onChange={(e) => setNotesMap((m) => ({ ...m, [payout._id]: e.target.value }))}
+                      className="text-xs h-8"
+                    />
+                    <div className="flex gap-1">
+                      {payout.status === 'pending' && (
+                        <Button
+                          size="sm" variant="outline" className="flex-1 text-xs h-7"
+                          disabled={updatingId === payout._id}
+                          onClick={() => handleStatusUpdate(payout._id, 'processing')}
+                        >
+                          Mark Processing
+                        </Button>
+                      )}
+                      {['pending', 'processing'].includes(payout.status) && (
+                        <Button
+                          size="sm" className="flex-1 text-xs h-7 bg-[#004406] hover:bg-[#003305] text-white"
+                          disabled={updatingId === payout._id}
+                          onClick={() => handleStatusUpdate(payout._id, 'paid')}
+                        >
+                          {updatingId === payout._id ? '…' : 'Mark Paid'}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </Card>
-          )}
+          ))}
         </div>
-
-        {selected ? (
-          <Card className="p-5">
-            <h3 className="font-semibold mb-1">{selected.firstName} {selected.lastName}</h3>
-            <p className="text-xs text-muted-foreground mb-4">Role: <span className="font-semibold">{selected.role}</span> · Custom permissions override role defaults</p>
-            <div className="grid grid-cols-2 gap-2 max-h-[400px] overflow-y-auto mb-4">
-              {ALL_PERMISSIONS.map((perm) => (
-                <label key={perm} className="flex items-center gap-2 text-xs cursor-pointer">
-                  <input type="checkbox" checked={customPerms.includes(perm)} onChange={() => togglePerm(perm)} className="rounded" />
-                  <span className="font-mono">{perm}</span>
-                </label>
-              ))}
-            </div>
-            {msg && <p className="text-sm text-muted-foreground mb-2">{msg}</p>}
-            <Button onClick={handleSave} className="bg-[#004406] hover:bg-[#003305] text-white w-full">Save Permissions</Button>
-          </Card>
-        ) : (
-          <Card className="p-6 flex items-center justify-center text-muted-foreground">
-            Search for a user to edit their permissions
-          </Card>
-        )}
-      </div>
+      )}
     </div>
   );
 }

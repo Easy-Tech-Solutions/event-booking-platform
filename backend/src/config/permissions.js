@@ -94,11 +94,17 @@ export function hasPermission(user, permission) {
   // Superadmin has everything
   if (role === ROLES.superadmin) return true;
 
-  // Check role-based permissions
-  const rolePerms = ROLE_PERMISSIONS[role] || [];
-  if (rolePerms.includes(permission)) return true;
+  // If the user has a custom role assigned, use that role's permission set
+  // (customRole is populated by the authenticate middleware)
+  if (user.customRole && user.customRole.permissions) {
+    if (user.customRole.permissions.includes(permission)) return true;
+  } else {
+    // Fall back to system role permissions
+    const rolePerms = ROLE_PERMISSIONS[role] || [];
+    if (rolePerms.includes(permission)) return true;
+  }
 
-  // Check custom per-user permissions (for fine-grained overrides)
+  // customPermissions always overlay on top of either source
   const custom = user.customPermissions || [];
   return custom.includes(permission);
 }

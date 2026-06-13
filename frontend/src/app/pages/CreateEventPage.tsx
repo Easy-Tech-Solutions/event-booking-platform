@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import { Navbar } from '../components/Navbar';
 import { Card } from '../components/ui/card';
@@ -66,14 +66,6 @@ const STEPS = [
   { number: 5, title: 'Review', icon: Eye },
 ];
 
-const UNSPLASH_SUGGESTIONS = [
-  'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&q=80',
-  'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&q=80',
-  'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=800&q=80',
-  'https://images.unsplash.com/photo-1429962714451-bb934ecdc4ec?w=800&q=80',
-  'https://images.unsplash.com/photo-1513623935135-c896b59073c1?w=800&q=80',
-  'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80',
-];
 
 const DEFAULT_DRAFT: EventDraft = {
   title: '',
@@ -553,6 +545,29 @@ function Step3Details({ draft, set, tagInput, setTagInput }: {
   tagInput: string;
   setTagInput: (v: string) => void;
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError('');
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const res = await apiClient.post('/upload?folder=events', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      set('coverImageUrl', res.data.url);
+    } catch {
+      setUploadError('Upload failed. Check that Cloudinary is configured.');
+    } finally {
+      setUploading(false);
+    }
+  }, [set]);
+
   const addFaq = () => set('faqs', [...draft.faqs, { question: '', answer: '' }]);
   const updateFaq = (i: number, field: 'question' | 'answer', value: string) =>
     set('faqs', draft.faqs.map((f, idx) => idx === i ? { ...f, [field]: value } : f));
@@ -580,60 +595,50 @@ function Step3Details({ draft, set, tagInput, setTagInput }: {
       {/* Cover Image */}
       <Card className="p-6">
         <h2 className="text-xl font-semibold mb-1">Cover image</h2>
-        <p className="text-sm text-muted-foreground mb-4">Add a banner image to make your event stand out. Paste a URL or pick a suggestion.</p>
+        <p className="text-sm text-muted-foreground mb-4">Upload a banner image to make your event stand out.</p>
 
-        {/* URL input */}
-        <div className="flex gap-2 mb-4">
-          <div className="relative flex-1">
-            <Upload className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              value={draft.coverImageUrl}
-              onChange={(e) => set('coverImageUrl', e.target.value)}
-              placeholder="https://… (paste an image URL)"
-              className="pl-9"
-            />
-          </div>
-          {draft.coverImageUrl && (
-            <Button variant="outline" size="sm" onClick={() => set('coverImageUrl', '')}>
-              <X className="w-4 h-4" />
-            </Button>
-          )}
-        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          aria-label="Upload event cover image"
+          title="Upload event cover image"
+          className="hidden"
+          onChange={handleFileChange}
+        />
 
-        {/* Preview */}
         {draft.coverImageUrl ? (
-          <div className="rounded-xl overflow-hidden mb-4 aspect-video bg-gray-100">
-            <img
-              src={draft.coverImageUrl}
-              alt="Cover preview"
-              className="w-full h-full object-cover"
-              onError={(e) => { (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&q=80'; }}
-            />
-          </div>
-        ) : (
-          <div className="rounded-xl border-2 border-dashed border-gray-300 aspect-video flex items-center justify-center mb-4 bg-gray-50">
-            <div className="text-center text-muted-foreground">
-              <ImageIcon className="w-10 h-10 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No image selected</p>
+          <div className="rounded-xl overflow-hidden aspect-video bg-gray-100 relative group mb-3">
+            <img src={draft.coverImageUrl} alt="Cover preview" className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+              <Button
+                type="button" size="sm" variant="secondary"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? 'Uploading…' : 'Change Image'}
+              </Button>
+              <Button type="button" size="sm" variant="destructive" onClick={() => set('coverImageUrl', '')}>
+                Remove
+              </Button>
             </div>
           </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="w-full rounded-xl border-2 border-dashed border-gray-300 aspect-video flex flex-col items-center justify-center mb-3 bg-gray-50 hover:border-[#004406]/50 hover:bg-[#004406]/5 transition-colors group"
+          >
+            <Upload className={`w-10 h-10 mb-2 transition-colors ${uploading ? 'text-gray-400 animate-pulse' : 'text-gray-400 group-hover:text-[#004406]'}`} />
+            <p className="text-sm font-medium text-muted-foreground group-hover:text-[#004406]">
+              {uploading ? 'Uploading…' : 'Click to upload an image'}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">PNG, JPG, WEBP up to 5MB</p>
+          </button>
         )}
 
-        {/* Suggestions */}
-        <p className="text-xs text-muted-foreground mb-2 font-medium">Quick picks:</p>
-        <div className="grid grid-cols-3 gap-2">
-          {UNSPLASH_SUGGESTIONS.map((url) => (
-            <button
-              key={url}
-              type="button"
-              onClick={() => set('coverImageUrl', url)}
-              className={`rounded-lg overflow-hidden aspect-video border-2 transition-all hover:opacity-90
-                ${draft.coverImageUrl === url ? 'border-[#004406]' : 'border-transparent'}`}
-            >
-              <img src={url} alt="suggestion" className="w-full h-full object-cover" />
-            </button>
-          ))}
-        </div>
+        {uploadError && <p className="text-sm text-destructive mt-1">{uploadError}</p>}
       </Card>
 
       {/* Good to Know */}

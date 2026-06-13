@@ -11,7 +11,7 @@ const authenticate = async (req, res, next) => {
     }
 
     const decoded = verifyAccessToken(token);
-    const user = await User.findById(decoded.userId);
+    const user = await User.findById(decoded.userId).populate('customRole');
 
     if (!user) {
       return res.status(401).json({ message: "User not found" });

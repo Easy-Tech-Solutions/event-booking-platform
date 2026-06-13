@@ -21,6 +21,7 @@ import adminRoutes from "./routes/admin.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 import supportRoutes from "./routes/support.routes.js";
 import blogRoutes from "./routes/blog.routes.js";
+import uploadRoutes from "./routes/upload.routes.js";
 
 // const { CLIENT_URL } = env;
 
@@ -128,6 +129,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/blog", blogRoutes);
+app.use("/api/upload", uploadRoutes);
 
 // Error handling
 app.use(notFound);
