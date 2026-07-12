@@ -4,10 +4,14 @@ import { Navbar } from '../components/Navbar';
 import { Card } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { LayoutDashboard, Calendar, Plus, DollarSign, BarChart3, Trash2, Eye, TrendingUp, Users, Ticket } from 'lucide-react';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { LayoutDashboard, Calendar, Plus, DollarSign, BarChart3, Trash2, Eye, TrendingUp, Users, Ticket, Link2, Copy, ExternalLink, CheckCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useAppDispatch, useAppSelector } from '../store';
 import { fetchMyEvents, deleteEvent } from '../store/slices/eventsSlice';
+import apiClient from '../api/client';
 
 export function OrganizerDashboard() {
   const location = useLocation();
@@ -16,6 +20,7 @@ export function OrganizerDashboard() {
     { id: 'events', label: 'My Events', icon: Calendar, path: '/organizer/events' },
     { id: 'create', label: 'Create Event', icon: Plus, path: '/organizer/create' },
     { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/organizer/analytics' },
+    { id: 'tracking', label: 'Tracking Links', icon: Link2, path: '/organizer/tracking-links' },
   ];
 
   return (
@@ -44,6 +49,7 @@ export function OrganizerDashboard() {
               <Route path="dashboard" element={<Overview />} />
               <Route path="events" element={<MyEvents />} />
               <Route path="analytics" element={<Analytics />} />
+              <Route path="tracking-links" element={<TrackingLinks />} />
               <Route index element={<Overview />} />
             </Routes>
           </div>
@@ -175,6 +181,174 @@ function Analytics() {
           </BarChart>
         </ResponsiveContainer>
       </Card>
+    </div>
+  );
+}
+
+function TrackingLinks() {
+  const { myEvents } = useAppSelector((state) => state.events);
+  const dispatch = useAppDispatch();
+
+  const [links, setLinks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
+  const [form, setForm] = useState({ label: '', eventId: '', utmSource: '', utmMedium: '', utmCampaign: '' });
+  const [formError, setFormError] = useState('');
+
+  useEffect(() => { dispatch(fetchMyEvents()); }, [dispatch]);
+
+  useEffect(() => {
+    setLoading(true);
+    apiClient.get('/tracking-links')
+      .then((r) => setLinks(r.data.trackingLinks || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleCreate = async () => {
+    if (!form.label.trim() || !form.eventId) {
+      setFormError('Label and event are required.');
+      return;
+    }
+    setCreating(true);
+    setFormError('');
+    try {
+      const res = await apiClient.post('/tracking-links', {
+        label: form.label.trim(),
+        eventId: form.eventId,
+        utmSource: form.utmSource || undefined,
+        utmMedium: form.utmMedium || undefined,
+        utmCampaign: form.utmCampaign || undefined,
+      });
+      setLinks((prev) => [res.data.trackingLink, ...prev]);
+      setForm({ label: '', eventId: '', utmSource: '', utmMedium: '', utmCampaign: '' });
+    } catch (err: any) {
+      setFormError(err.response?.data?.message || 'Failed to create link.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this tracking link?')) return;
+    try {
+      await apiClient.delete(`/tracking-links/${id}`);
+      setLinks((prev) => prev.filter((l) => l._id !== id));
+    } catch {}
+  };
+
+  const copyLink = (url: string, slug: string) => {
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedSlug(slug);
+      setTimeout(() => setCopiedSlug(null), 2000);
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold mb-1">Tracking Links</h2>
+        <p className="text-muted-foreground text-sm">Create UTM links to measure traffic sources for your events.</p>
+      </div>
+
+      {/* Create form */}
+      <Card className="p-6">
+        <h3 className="font-semibold mb-4">Create New Link</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label>Label</Label>
+            <Input value={form.label} onChange={(e) => setForm((p) => ({ ...p, label: e.target.value }))} placeholder="e.g. Instagram Bio" />
+          </div>
+          <div>
+            <Label>Event</Label>
+            <Select value={form.eventId} onValueChange={(v) => setForm((p) => ({ ...p, eventId: v }))}>
+              <SelectTrigger><SelectValue placeholder="Select event" /></SelectTrigger>
+              <SelectContent>
+                {myEvents.map((e: any) => (
+                  <SelectItem key={e._id} value={e._id}>{e.title}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>UTM Source <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Input value={form.utmSource} onChange={(e) => setForm((p) => ({ ...p, utmSource: e.target.value }))} placeholder="instagram" />
+          </div>
+          <div>
+            <Label>UTM Medium <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Input value={form.utmMedium} onChange={(e) => setForm((p) => ({ ...p, utmMedium: e.target.value }))} placeholder="social" />
+          </div>
+          <div className="md:col-span-2">
+            <Label>UTM Campaign <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Input value={form.utmCampaign} onChange={(e) => setForm((p) => ({ ...p, utmCampaign: e.target.value }))} placeholder="summer-launch" />
+          </div>
+        </div>
+        {formError && <p className="text-sm text-destructive mt-3">{formError}</p>}
+        <Button
+          className="mt-4 bg-[#004406] hover:bg-[#003305] text-white"
+          disabled={creating}
+          onClick={handleCreate}
+        >
+          <Plus className="w-4 h-4 mr-2" />{creating ? 'Creating…' : 'Create Link'}
+        </Button>
+      </Card>
+
+      {/* Links list */}
+      <div className="space-y-3">
+        {loading ? (
+          [1, 2].map((i) => <div key={i} className="h-24 bg-gray-100 animate-pulse rounded-xl" />)
+        ) : links.length === 0 ? (
+          <Card className="p-8 text-center">
+            <Link2 className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+            <p className="text-muted-foreground">No tracking links yet. Create one above.</p>
+          </Card>
+        ) : links.map((link) => (
+          <Card key={link._id} className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="font-medium">{link.label}</div>
+                <div className="text-xs text-muted-foreground mb-2">{link.event?.title || 'Unknown event'}</div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <code className="text-xs bg-gray-100 rounded px-2 py-0.5 font-mono max-w-[200px] truncate">
+                    {link.url || `?ref=${link.slug}`}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => copyLink(link.url || '', link.slug)}
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label="Copy link"
+                  >
+                    {copiedSlug === link.slug ? <CheckCircle className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                  {link.url && (
+                    <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground" aria-label="Open link">
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-6 text-center shrink-0">
+                <div>
+                  <div className="text-lg font-bold">{link.clicks ?? 0}</div>
+                  <div className="text-xs text-muted-foreground">Clicks</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold">{link.orders ?? 0}</div>
+                  <div className="text-xs text-muted-foreground">Orders</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold">${(link.revenue ?? 0).toLocaleString()}</div>
+                  <div className="text-xs text-muted-foreground">Revenue</div>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => handleDelete(link._id)} className="text-destructive hover:text-destructive">
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useParams, useNavigate, useSearchParams } from 'react-router';
 import { Navbar } from '../components/Navbar';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Separator } from '../components/ui/separator';
-import { Check, ChevronLeft, Lock, Mail, Phone, Calendar, MapPin, Ticket } from 'lucide-react';
+import { Check, ChevronLeft, Lock, Mail, Phone, Calendar, MapPin, Ticket, Tag, X } from 'lucide-react';
+import apiClient from '../api/client';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { useAppDispatch, useAppSelector } from '../store';
@@ -140,6 +141,8 @@ export function BookingFlow() {
   const { id } = useParams();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
+  const [searchParams] = useSearchParams();
+  const refSlug = searchParams.get('ref') || undefined;
 
   const { currentEvent: event, ticketTypes } = useAppSelector((state) => state.events);
   const { currentOrder, clientSecret, tickets, isLoading: orderLoading, error: orderError } = useAppSelector((state) => state.orders);
@@ -147,6 +150,15 @@ export function BookingFlow() {
 
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedTickets, setSelectedTickets] = useState<Record<string, number>>({});
+  const [promoInput, setPromoInput] = useState('');
+  const [promoResult, setPromoResult] = useState<{
+    discountType: string;
+    discountValue: number;
+    discountAmount: number;
+    code: string;
+  } | null>(null);
+  const [promoError, setPromoError] = useState('');
+  const [promoValidating, setPromoValidating] = useState(false);
   const [details, setDetails] = useState({
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
@@ -199,9 +211,36 @@ export function BookingFlow() {
     const tt = ticketTypes.find((t: any) => t._id === tid);
     return sum + (tt?.price || 0) * qty;
   }, 0);
-  const platformFee = Math.round(subtotal * 0.03 * 100) / 100;
-  const paymentFee = Math.round((subtotal * 0.029 + 0.30) * 100) / 100;
-  const total = subtotal + platformFee + paymentFee;
+  const discountAmount = promoResult?.discountAmount ?? 0;
+  const discountedSubtotal = Math.max(subtotal - discountAmount, 0);
+  const platformFee = Math.round(discountedSubtotal * 0.03 * 100) / 100;
+  const paymentFee = Math.round((discountedSubtotal * 0.029 + 0.30) * 100) / 100;
+  const total = discountedSubtotal + platformFee + paymentFee;
+
+  const validatePromoCode = async () => {
+    if (!promoInput.trim()) return;
+    setPromoValidating(true);
+    setPromoError('');
+    setPromoResult(null);
+    try {
+      const res = await apiClient.post('/promo-codes/validate', {
+        code: promoInput.trim(),
+        eventId: event?._id,
+        orderAmount: subtotal,
+      });
+      setPromoResult({ ...res.data, code: promoInput.trim().toUpperCase() });
+    } catch (err: any) {
+      setPromoError(err.response?.data?.message || 'Invalid promo code.');
+    } finally {
+      setPromoValidating(false);
+    }
+  };
+
+  const clearPromo = () => {
+    setPromoInput('');
+    setPromoResult(null);
+    setPromoError('');
+  };
   const totalTickets = Object.values(selectedTickets).reduce((s, q) => s + q, 0);
 
   const formatDate = (d: string) =>
@@ -222,6 +261,8 @@ export function BookingFlow() {
           name: `${details.firstName} ${details.lastName}`,
           email: details.email,
         },
+        ...(promoResult ? { promoCode: promoResult.code } : {}),
+        ...(refSlug ? { ref: refSlug } : {}),
       })
     );
     if (createOrder.fulfilled.match(result)) {
@@ -481,12 +522,62 @@ export function BookingFlow() {
                   );
                 })}
               </div>
+
+              {/* Promo code input */}
+              {currentStep < 3 && (
+                <>
+                  <Separator className="my-4" />
+                  <div className="space-y-2">
+                    <Label className="text-sm flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5" />Promo Code
+                    </Label>
+                    {promoResult ? (
+                      <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-md px-3 py-2">
+                        <div className="text-sm text-green-700 font-medium">
+                          {promoResult.code} — {promoResult.discountType === 'percentage' ? `${promoResult.discountValue}% off` : `$${promoResult.discountValue} off`}
+                        </div>
+                        <button type="button" onClick={clearPromo} aria-label="Remove promo code" className="text-green-600 hover:text-green-800">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Input
+                          value={promoInput}
+                          onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromoError(''); }}
+                          onKeyDown={(e) => e.key === 'Enter' && validatePromoCode()}
+                          placeholder="SAVE10"
+                          className="uppercase text-sm"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={!promoInput.trim() || promoValidating}
+                          onClick={validatePromoCode}
+                          className="whitespace-nowrap"
+                        >
+                          {promoValidating ? '…' : 'Apply'}
+                        </Button>
+                      </div>
+                    )}
+                    {promoError && <p className="text-xs text-destructive">{promoError}</p>}
+                  </div>
+                </>
+              )}
+
               <Separator className="my-4" />
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Subtotal</span>
                   <span>${subtotal.toFixed(2)}</span>
                 </div>
+                {discountAmount > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span>Discount ({promoResult?.code})</span>
+                    <span>−${discountAmount.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Platform Fee (3%)</span>
                   <span>${platformFee.toFixed(2)}</span>
