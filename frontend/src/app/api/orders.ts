@@ -19,6 +19,11 @@ export interface CreateOrderPayload {
       country?: string;
     };
   };
+  promoCode?: string;
+  ref?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
 }
 
 export interface ConfirmOrderPayload {

@@ -9,7 +9,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
 import {
   Check, ChevronLeft, ChevronRight, Calendar, MapPin, Image as ImageIcon,
-  Ticket, Eye, Plus, Trash2, Globe, Users, Tag, X, CheckCircle, Upload,
+  Ticket, Eye, Plus, Trash2, Globe, Users, Tag, X, CheckCircle, Upload, Sparkles,
 } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../store';
 import { createEvent } from '../store/slices/eventsSlice';
@@ -313,6 +313,33 @@ function Step1Basics({ draft, set, categories, tagInput, setTagInput }: {
   tagInput: string;
   setTagInput: (v: string) => void;
 }) {
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiError, setAiError] = useState('');
+
+  const generateDescription = async () => {
+    setAiGenerating(true);
+    setAiError('');
+    try {
+      const res = await apiClient.post('/ai/generate', {
+        type: 'event_description',
+        context: {
+          title: draft.title,
+          category: draft.category,
+          format: draft.format,
+          city: draft.city,
+          startDate: draft.startDate,
+        },
+      });
+      if (res.data.generated) {
+        set('description', res.data.generated);
+      }
+    } catch {
+      setAiError('AI generation failed. Please try again or write your description manually.');
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+
   const addTag = () => {
     const t = tagInput.trim().toLowerCase();
     if (t && !draft.tags.includes(t) && draft.tags.length < 10) {
@@ -624,7 +651,20 @@ function Step3Details({ draft, set, tagInput, setTagInput }: {
     <div className="space-y-6">
       {/* Description */}
       <Card className="p-6">
-        <h2 className="text-xl font-semibold mb-1">Describe your event</h2>
+        <div className="flex items-start justify-between mb-1">
+          <h2 className="text-xl font-semibold">Describe your event</h2>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!draft.title.trim() || aiGenerating}
+            onClick={generateDescription}
+            className="flex items-center gap-1.5 text-purple-600 border-purple-200 hover:bg-purple-50 hover:border-purple-300"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            {aiGenerating ? 'Generating…' : 'Write with AI'}
+          </Button>
+        </div>
         <p className="text-sm text-muted-foreground mb-4">Tell potential attendees what to expect. Aim for at least 100 characters.</p>
         <Textarea
           value={draft.description}
@@ -633,8 +673,13 @@ function Step3Details({ draft, set, tagInput, setTagInput }: {
           rows={7}
           className="resize-none"
         />
-        <div className={`text-xs mt-1 text-right ${draft.description.length < 20 ? 'text-destructive' : 'text-muted-foreground'}`}>
-          {draft.description.length} chars {draft.description.length < 20 ? '(minimum 20)' : ''}
+        <div className="flex items-center justify-between mt-1">
+          {aiError ? (
+            <p className="text-xs text-destructive">{aiError}</p>
+          ) : <span />}
+          <span className={`text-xs ${draft.description.length < 20 ? 'text-destructive' : 'text-muted-foreground'}`}>
+            {draft.description.length} chars {draft.description.length < 20 ? '(minimum 20)' : ''}
+          </span>
         </div>
       </Card>
 
