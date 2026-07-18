@@ -73,7 +73,15 @@ const orderSchema = new mongoose.Schema({
       postal_code: String,
       country: String
     }
-  }
+  },
+  // Optional per-ticket recipients when buying on behalf of others
+  recipients: [{
+    name: { type: String, required: true },
+    email: { type: String, required: true },
+    phone: String,
+    ticketTypeName: String,
+  }],
+  paymentGateway: { type: String, enum: ['stripe', 'momo', 'comp'], default: 'stripe' },
 }, {
   timestamps: true
 });

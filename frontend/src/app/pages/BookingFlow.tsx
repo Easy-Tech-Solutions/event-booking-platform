@@ -6,17 +6,20 @@ import { Card } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Separator } from '../components/ui/separator';
-import { Check, ChevronLeft, Lock, Mail, Phone, Calendar, MapPin, Ticket, Tag, X } from 'lucide-react';
+import {
+  Check, ChevronLeft, Lock, Mail, Phone, Calendar, MapPin, Ticket, Tag, X,
+  CreditCard, Smartphone, User, Users,
+} from 'lucide-react';
 import apiClient from '../api/client';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { useAppDispatch, useAppSelector } from '../store';
 import { fetchEventById } from '../store/slices/eventsSlice';
-import { createOrder, confirmOrder, clearCurrentOrder } from '../store/slices/ordersSlice';
+import { createOrder, confirmOrder, confirmMomoOrder, clearCurrentOrder } from '../store/slices/ordersSlice';
 import { TicketQRCode } from '../components/TicketQRCode';
 
 // ---------------------------------------------------------------------------
-// Inner payment form — must live *inside* <Elements>
+// Stripe card form — must live *inside* <Elements>
 // ---------------------------------------------------------------------------
 interface PaymentFormProps {
   total: number;
@@ -49,6 +52,7 @@ function PaymentForm({ total, billingName, billingEmail, clientSecret, currentOr
     setPaymentError('');
     setIsProcessing(true);
 
+    // clientSecret goes here — NOT in <Elements> options (which would hide CardElement)
     const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
       payment_method: {
         card: cardElement,
@@ -64,10 +68,7 @@ function PaymentForm({ total, billingName, billingEmail, clientSecret, currentOr
 
     if (paymentIntent?.status === 'succeeded') {
       const result = await dispatch(
-        confirmOrder({
-          orderId: currentOrderId,
-          paymentMethodId: paymentIntent.payment_method as string,
-        })
+        confirmOrder({ orderId: currentOrderId, paymentMethodId: paymentIntent.payment_method as string }),
       );
       if (confirmOrder.fulfilled.match(result)) {
         onSuccess();
@@ -94,10 +95,7 @@ function PaymentForm({ total, billingName, billingEmail, clientSecret, currentOr
                   fontSmoothing: 'antialiased',
                   '::placeholder': { color: '#9ca3af' },
                 },
-                invalid: {
-                  color: '#ef4444',
-                  iconColor: '#ef4444',
-                },
+                invalid: { color: '#ef4444', iconColor: '#ef4444' },
               },
               hidePostalCode: true,
             }}
@@ -150,15 +148,16 @@ export function BookingFlow() {
 
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedTickets, setSelectedTickets] = useState<Record<string, number>>({});
+
+  // Promo code state
   const [promoInput, setPromoInput] = useState('');
   const [promoResult, setPromoResult] = useState<{
-    discountType: string;
-    discountValue: number;
-    discountAmount: number;
-    code: string;
+    discountType: string; discountValue: number; discountAmount: number; code: string;
   } | null>(null);
   const [promoError, setPromoError] = useState('');
   const [promoValidating, setPromoValidating] = useState(false);
+
+  // Contact details
   const [details, setDetails] = useState({
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
@@ -166,13 +165,21 @@ export function BookingFlow() {
     phone: '',
   });
 
-  // Initialise Stripe once — memoised so it never re-creates on re-renders
+  // Payment method
+  const [paymentMethod, setPaymentMethod] = useState<'card' | 'momo'>('card');
+
+  // MoMo payment state
+  const [momoPhone, setMomoPhone] = useState('');
+  const [momoProcessing, setMomoProcessing] = useState(false);
+  const [momoError, setMomoError] = useState('');
+
+  // Recipient type + per-ticket recipient forms
+  const [recipientType, setRecipientType] = useState<'self' | 'others'>('self');
+  const [recipients, setRecipients] = useState<Array<{ name: string; email: string; phone: string }>>([]);
+
   const stripePromise = useMemo(() => {
     const key = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
-    if (!key) {
-      console.error('VITE_STRIPE_PUBLISHABLE_KEY is not set.');
-      return null;
-    }
+    if (!key) { console.error('VITE_STRIPE_PUBLISHABLE_KEY is not set.'); return null; }
     return loadStripe(key);
   }, []);
 
@@ -180,6 +187,27 @@ export function BookingFlow() {
     if (id) dispatch(fetchEventById(id));
     return () => { dispatch(clearCurrentOrder()); };
   }, [dispatch, id]);
+
+  const totalTickets = Object.values(selectedTickets).reduce((s, q) => s + q, 0);
+
+  // Keep recipients array in sync with total ticket count when "others" is selected
+  useEffect(() => {
+    if (recipientType === 'others') {
+      setRecipients((prev) =>
+        Array.from({ length: totalTickets }, (_, i) => prev[i] || { name: '', email: '', phone: '' }),
+      );
+    }
+  }, [recipientType, totalTickets]);
+
+  // Map each ticket slot to a ticket type name (for recipient form labels)
+  const recipientTicketTypes = useMemo(() => {
+    const types: string[] = [];
+    Object.entries(selectedTickets).forEach(([tid, qty]) => {
+      const tt = ticketTypes.find((t: any) => t._id === tid);
+      for (let i = 0; i < qty; i++) types.push(tt?.name || 'Ticket');
+    });
+    return types;
+  }, [selectedTickets, ticketTypes]);
 
   if (!event) {
     return (
@@ -199,12 +227,13 @@ export function BookingFlow() {
   const updateQty = (ticketId: string, change: number) => {
     setSelectedTickets((prev) => {
       const newQty = Math.max(0, (prev[ticketId] || 0) + change);
-      if (newQty === 0) {
-        const { [ticketId]: _, ...rest } = prev;
-        return rest;
-      }
+      if (newQty === 0) { const { [ticketId]: _, ...rest } = prev; return rest; }
       return { ...prev, [ticketId]: newQty };
     });
+  };
+
+  const updateRecipient = (index: number, field: 'name' | 'email' | 'phone', value: string) => {
+    setRecipients((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
   };
 
   const subtotal = Object.entries(selectedTickets).reduce((sum, [tid, qty]) => {
@@ -214,7 +243,7 @@ export function BookingFlow() {
   const discountAmount = promoResult?.discountAmount ?? 0;
   const discountedSubtotal = Math.max(subtotal - discountAmount, 0);
   const platformFee = Math.round(discountedSubtotal * 0.03 * 100) / 100;
-  const paymentFee = Math.round((discountedSubtotal * 0.029 + 0.30) * 100) / 100;
+  const paymentFee = Math.round((discountedSubtotal * 0.029 + 0.3) * 100) / 100;
   const total = discountedSubtotal + platformFee + paymentFee;
 
   const validatePromoCode = async () => {
@@ -236,44 +265,61 @@ export function BookingFlow() {
     }
   };
 
-  const clearPromo = () => {
-    setPromoInput('');
-    setPromoResult(null);
-    setPromoError('');
-  };
-  const totalTickets = Object.values(selectedTickets).reduce((s, q) => s + q, 0);
+  const clearPromo = () => { setPromoInput(''); setPromoResult(null); setPromoError(''); };
 
   const formatDate = (d: string) =>
     new Date(d).toLocaleDateString('en-US', {
       weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
     });
 
+  const recipientsAreValid =
+    recipientType === 'self' ||
+    (recipients.length === totalTickets && recipients.every((r) => r.name.trim() && r.email.trim()));
+
+  const canProceedFromStep2 = !!details.firstName && !!details.email && !orderLoading && recipientsAreValid;
+
   const handleCreateOrder = async () => {
-    const items = Object.entries(selectedTickets).map(([ticketType, quantity]) => ({
-      ticketType,
-      quantity,
-    }));
+    const items = Object.entries(selectedTickets).map(([ticketType, quantity]) => ({ ticketType, quantity }));
+
+    const recipientsPayload =
+      recipientType === 'others' && recipients.length > 0
+        ? recipients.map((r, i) => ({ ...r, ticketTypeName: recipientTicketTypes[i] || '' }))
+        : undefined;
+
     const result = await dispatch(
       createOrder({
         eventId: event._id,
         items,
-        billingDetails: {
-          name: `${details.firstName} ${details.lastName}`,
-          email: details.email,
-        },
+        billingDetails: { name: `${details.firstName} ${details.lastName}`, email: details.email },
+        paymentGateway: paymentMethod === 'card' ? 'stripe' : 'momo',
         ...(promoResult ? { promoCode: promoResult.code } : {}),
         ...(refSlug ? { ref: refSlug } : {}),
-      })
+        ...(recipientsPayload ? { recipients: recipientsPayload } : {}),
+      }),
     );
+
     if (createOrder.fulfilled.match(result)) {
-      setCurrentStep(3);
+      const { clientSecret: cs, requiresMomoPayment } = result.payload;
+      if (cs || requiresMomoPayment) {
+        setCurrentStep(3);
+      } else {
+        setCurrentStep(4); // $0 order already fulfilled
+      }
     }
   };
 
-  // Elements appearance options
-  const elementsOptions = clientSecret
-    ? { clientSecret, appearance: { theme: 'stripe' as const } }
-    : undefined;
+  const handleMomoPayment = async () => {
+    if (!momoPhone.trim() || !currentOrder?._id) return;
+    setMomoProcessing(true);
+    setMomoError('');
+    const result = await dispatch(confirmMomoOrder({ orderId: currentOrder._id, momoPhone }));
+    if (confirmMomoOrder.fulfilled.match(result)) {
+      setCurrentStep(4);
+    } else {
+      setMomoError((result.payload as string) || 'MoMo payment failed. Please try again.');
+    }
+    setMomoProcessing(false);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -356,56 +402,150 @@ export function BookingFlow() {
             {currentStep === 2 && (
               <Card className="p-6">
                 <h2 className="text-2xl font-bold mb-6">Your Details</h2>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label>First Name</Label>
-                      <Input
-                        value={details.firstName}
-                        onChange={(e) => setDetails((p) => ({ ...p, firstName: e.target.value }))}
-                        placeholder="John"
-                      />
+                <div className="space-y-6">
+
+                  {/* Contact form */}
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label>First Name</Label>
+                        <Input
+                          value={details.firstName}
+                          onChange={(e) => setDetails((p) => ({ ...p, firstName: e.target.value }))}
+                          placeholder="John"
+                        />
+                      </div>
+                      <div>
+                        <Label>Last Name</Label>
+                        <Input
+                          value={details.lastName}
+                          onChange={(e) => setDetails((p) => ({ ...p, lastName: e.target.value }))}
+                          placeholder="Doe"
+                        />
+                      </div>
                     </div>
                     <div>
-                      <Label>Last Name</Label>
-                      <Input
-                        value={details.lastName}
-                        onChange={(e) => setDetails((p) => ({ ...p, lastName: e.target.value }))}
-                        placeholder="Doe"
-                      />
+                      <Label>Email Address</Label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                        <Input
+                          type="email"
+                          value={details.email}
+                          onChange={(e) => setDetails((p) => ({ ...p, email: e.target.value }))}
+                          placeholder="john@example.com"
+                          className="pl-10"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Phone Number</Label>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                        <Input
+                          type="tel"
+                          value={details.phone}
+                          onChange={(e) => setDetails((p) => ({ ...p, phone: e.target.value }))}
+                          placeholder="+1 (555) 123-4567"
+                          className="pl-10"
+                        />
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <Label>Email Address</Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                      <Input
-                        type="email"
-                        value={details.email}
-                        onChange={(e) => setDetails((p) => ({ ...p, email: e.target.value }))}
-                        placeholder="john@example.com"
-                        className="pl-10"
-                      />
+
+                  <Separator />
+
+                  {/* Recipient type selector */}
+                  <div className="space-y-3">
+                    <Label className="font-semibold">Who are these tickets for?</Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {([
+                        { key: 'self', icon: User, label: 'For myself' },
+                        { key: 'others', icon: Users, label: 'Gift tickets' },
+                      ] as const).map(({ key, icon: Icon, label }) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => setRecipientType(key)}
+                          className={`flex items-center gap-2 rounded-lg border-2 p-3 text-sm font-medium transition-colors ${
+                            recipientType === key
+                              ? 'border-[#004406] bg-[#004406]/5 text-[#004406]'
+                              : 'border-border text-muted-foreground hover:border-[#004406]/40'
+                          }`}
+                        >
+                          <Icon className="w-4 h-4" />
+                          {label}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                  <div>
-                    <Label>Phone Number</Label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                      <Input
-                        type="tel"
-                        value={details.phone}
-                        onChange={(e) => setDetails((p) => ({ ...p, phone: e.target.value }))}
-                        placeholder="+1 (555) 123-4567"
-                        className="pl-10"
-                      />
+
+                  {/* Per-ticket recipient forms */}
+                  {recipientType === 'others' && (
+                    <div className="space-y-4">
+                      <p className="text-sm text-muted-foreground">
+                        Enter details for each recipient. They will receive their ticket via email.
+                      </p>
+                      {recipientTicketTypes.map((typeName, i) => (
+                        <div key={i} className="border rounded-lg p-4 space-y-3 bg-gray-50">
+                          <h4 className="font-medium text-sm text-foreground">
+                            Recipient {i + 1}
+                            {typeName ? <span className="font-normal text-muted-foreground"> — {typeName}</span> : null}
+                          </h4>
+                          <Input
+                            value={recipients[i]?.name || ''}
+                            onChange={(e) => updateRecipient(i, 'name', e.target.value)}
+                            placeholder="Full name *"
+                          />
+                          <Input
+                            type="email"
+                            value={recipients[i]?.email || ''}
+                            onChange={(e) => updateRecipient(i, 'email', e.target.value)}
+                            placeholder="Email address *"
+                          />
+                          <Input
+                            type="tel"
+                            value={recipients[i]?.phone || ''}
+                            onChange={(e) => updateRecipient(i, 'phone', e.target.value)}
+                            placeholder="Phone number (optional)"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <Separator />
+
+                  {/* Payment method selector */}
+                  <div className="space-y-3">
+                    <Label className="font-semibold">Payment Method</Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {([
+                        { key: 'card', icon: CreditCard, label: 'Credit / Debit Card' },
+                        { key: 'momo', icon: Smartphone, label: 'MTN Mobile Money' },
+                      ] as const).map(({ key, icon: Icon, label }) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => setPaymentMethod(key)}
+                          className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 text-sm font-medium transition-colors ${
+                            paymentMethod === key
+                              ? 'border-[#004406] bg-[#004406]/5 text-[#004406]'
+                              : 'border-border text-muted-foreground hover:border-[#004406]/40'
+                          }`}
+                        >
+                          <Icon className="w-5 h-5" />
+                          {label}
+                        </button>
+                      ))}
                     </div>
                   </div>
+
                   {orderError && <p className="text-sm text-destructive">{orderError}</p>}
+
                   <Button
                     className="w-full bg-[#004406] hover:bg-[#003305] text-white"
                     size="lg"
-                    disabled={!details.firstName || !details.email || orderLoading}
+                    disabled={!canProceedFromStep2}
                     onClick={handleCreateOrder}
                   >
                     {orderLoading ? 'Processing…' : 'Continue to Payment'}
@@ -414,12 +554,16 @@ export function BookingFlow() {
               </Card>
             )}
 
-            {/* ── Step 3: Payment ──────────────────────────────────────── */}
-            {currentStep === 3 && clientSecret && (
+            {/* ── Step 3: Card payment ──────────────────────────────────── */}
+            {currentStep === 3 && paymentMethod === 'card' && clientSecret && (
               <Card className="p-6">
                 <h2 className="text-2xl font-bold mb-6">Payment Details</h2>
-                {/* Elements is scoped here with the real clientSecret */}
-                <Elements stripe={stripePromise} options={elementsOptions}>
+                {/*
+                  IMPORTANT: do NOT pass clientSecret to <Elements> options.
+                  Doing so activates PaymentElement mode and hides CardElement.
+                  clientSecret belongs in stripe.confirmCardPayment() inside PaymentForm.
+                */}
+                <Elements stripe={stripePromise} options={{ appearance: { theme: 'stripe' as const } }}>
                   <PaymentForm
                     total={total}
                     billingName={`${details.firstName} ${details.lastName}`}
@@ -432,6 +576,51 @@ export function BookingFlow() {
               </Card>
             )}
 
+            {/* ── Step 3: MoMo payment ──────────────────────────────────── */}
+            {currentStep === 3 && paymentMethod === 'momo' && currentOrder?._id && (
+              <Card className="p-6">
+                <h2 className="text-2xl font-bold mb-6">MTN Mobile Money</h2>
+                <div className="space-y-4">
+                  <div>
+                    <Label>MTN MoMo Phone Number</Label>
+                    <div className="relative mt-1.5">
+                      <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                      <Input
+                        type="tel"
+                        value={momoPhone}
+                        onChange={(e) => setMomoPhone(e.target.value)}
+                        placeholder="+233 XX XXX XXXX"
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800">
+                    <p className="font-medium mb-1">How it works</p>
+                    <p>
+                      You will receive a prompt on your MTN Mobile Money account to approve the
+                      payment of ${total.toFixed(2)}.
+                    </p>
+                  </div>
+
+                  {momoError && (
+                    <p className="text-sm text-destructive bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                      {momoError}
+                    </p>
+                  )}
+
+                  <Button
+                    className="w-full bg-[#004406] hover:bg-[#003305] text-white"
+                    size="lg"
+                    disabled={!momoPhone.trim() || momoProcessing}
+                    onClick={handleMomoPayment}
+                  >
+                    {momoProcessing ? 'Processing…' : `Pay $${total.toFixed(2)} with MoMo`}
+                  </Button>
+                </div>
+              </Card>
+            )}
+
             {/* ── Step 4: Confirmation ─────────────────────────────────── */}
             {currentStep === 4 && (
               <Card className="p-6">
@@ -440,7 +629,11 @@ export function BookingFlow() {
                     <Check className="w-8 h-8 text-[#004406]" />
                   </div>
                   <h2 className="text-2xl font-bold mb-2">Booking Confirmed!</h2>
-                  <p className="text-muted-foreground">Your tickets have been sent to {details.email}</p>
+                  <p className="text-muted-foreground">
+                    {recipientType === 'others'
+                      ? `Tickets have been sent to ${recipients.length} recipient(s)`
+                      : `Your tickets have been sent to ${details.email}`}
+                  </p>
                 </div>
                 {currentOrder && (
                   <div className="bg-gray-50 rounded-lg p-4 mb-6">
@@ -469,7 +662,7 @@ export function BookingFlow() {
                     </div>
                   )}
                 </div>
-                {tickets.length > 0 && (
+                {tickets.length > 0 && recipientType === 'self' && (
                   <div className="mt-6 flex flex-col items-center gap-4">
                     <h4 className="font-semibold">Your QR Code Tickets</h4>
                     {tickets.map((ticket: any) => (
@@ -478,6 +671,11 @@ export function BookingFlow() {
                         <div className="text-xs text-muted-foreground mt-1">{ticket.ticketNumber}</div>
                       </div>
                     ))}
+                  </div>
+                )}
+                {recipientType === 'others' && tickets.length > 0 && (
+                  <div className="bg-[#004406]/5 border border-[#004406]/20 rounded-lg p-4 text-sm text-[#004406] text-center">
+                    Ticket emails have been sent to all {recipients.length} recipient(s). You can view order details in My Tickets.
                   </div>
                 )}
                 <Button
