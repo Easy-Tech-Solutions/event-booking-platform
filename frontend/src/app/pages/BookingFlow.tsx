@@ -84,7 +84,7 @@ function PaymentForm({ total, billingName, billingEmail, clientSecret, currentOr
     <div className="space-y-4">
       <div>
         <Label>Card Details</Label>
-        <div className="mt-1.5 border border-input rounded-lg px-3 py-3 bg-white">
+        <div className="mt-1.5 border border-gray-300 rounded-lg px-3 py-3 bg-white min-h-[46px]">
           <CardElement
             options={{
               style: {
@@ -558,21 +558,29 @@ export function BookingFlow() {
             {currentStep === 3 && paymentMethod === 'card' && clientSecret && (
               <Card className="p-6">
                 <h2 className="text-2xl font-bold mb-6">Payment Details</h2>
-                {/*
-                  IMPORTANT: do NOT pass clientSecret to <Elements> options.
-                  Doing so activates PaymentElement mode and hides CardElement.
-                  clientSecret belongs in stripe.confirmCardPayment() inside PaymentForm.
-                */}
-                <Elements stripe={stripePromise} options={{ appearance: { theme: 'stripe' as const } }}>
-                  <PaymentForm
-                    total={total}
-                    billingName={`${details.firstName} ${details.lastName}`}
-                    billingEmail={details.email}
-                    clientSecret={clientSecret}
-                    currentOrderId={currentOrder._id}
-                    onSuccess={() => setCurrentStep(4)}
-                  />
-                </Elements>
+                {!stripePromise ? (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
+                    <p className="font-medium mb-1">Stripe not configured</p>
+                    <p>The <code className="font-mono">VITE_STRIPE_PUBLISHABLE_KEY</code> environment variable is missing. Add it to your Vercel project settings or local <code className="font-mono">.env</code> file.</p>
+                  </div>
+                ) : (
+                  /*
+                    Do NOT pass clientSecret or appearance to <Elements> here.
+                    - clientSecret → activates PaymentElement mode, which hides CardElement
+                    - appearance  → only works with PaymentElement, not CardElement (breaks in react-stripe-js v5)
+                    clientSecret is used inside stripe.confirmCardPayment() in PaymentForm instead.
+                  */
+                  <Elements stripe={stripePromise}>
+                    <PaymentForm
+                      total={total}
+                      billingName={`${details.firstName} ${details.lastName}`}
+                      billingEmail={details.email}
+                      clientSecret={clientSecret}
+                      currentOrderId={currentOrder._id}
+                      onSuccess={() => setCurrentStep(4)}
+                    />
+                  </Elements>
+                )}
               </Card>
             )}
 
