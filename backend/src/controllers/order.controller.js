@@ -8,11 +8,16 @@ import TrackingLink from "../models/TrackingLink.model.js";
 import stripe from "../config/stripe.js";
 import { generateQRCode, generateTicketQRData } from "../utils/qrcode.js";
 import { validationResult } from "express-validator";
-import { sendEmail } from "../utils/sendEmail.js";
 import { orderConfirmationEmailTemplate } from "../utils/emailTemplates.js";
 import { notify } from "../utils/notify.js";
+import logger from "../utils/logger.js";
 
 const createOrder = async (req, res, next) => {
+  // Track for rollback if we error before the order is saved to the DB
+  const reservedTicketTypes = []; // { _id, quantity }
+  let orderSaved = false;
+  let promoCodeId = null;
+
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -24,80 +29,100 @@ const createOrder = async (req, res, next) => {
       items,
       billingDetails,
       promoCode: promoCodeStr,
-      // UTM / tracking attribution
-      ref,         // tracking link slug
+      ref,
       utmSource,
       utmMedium,
       utmCampaign,
     } = req.body;
 
-    let subtotal = 0;
+    const event = await Event.findById(eventId).select("organizerAbsorbsFees organizer title startDate location");
+    if (!event) return res.status(404).json({ message: "Event not found." });
 
+    // ── C-3: Atomically reserve ticket inventory ──────────────────────────────
+    // Use findOneAndUpdate with $expr so the availability check and increment are
+    // a single atomic operation — prevents double-booking under concurrent load.
     for (const item of items) {
-      const ticketType = await TicketType.findById(item.ticketType);
+      const ticketType = await TicketType.findOneAndUpdate(
+        {
+          _id: item.ticketType,
+          isActive: true,
+          $expr: { $gte: [{ $subtract: ["$quantity", "$sold"] }, item.quantity] },
+          $or: [{ maxPerOrder: null }, { maxPerOrder: { $gte: item.quantity } }],
+        },
+        { $inc: { sold: item.quantity } },
+        { new: true },
+      );
 
-      if (!ticketType || !ticketType.isAvailable) {
-        return res.status(400).json({
-          message: `Ticket type ${ticketType?.name || "unknown"} is not available`,
-        });
-      }
-
-      if (ticketType.available < item.quantity) {
-        return res.status(400).json({
-          message: `Only ${ticketType.available} tickets available for ${ticketType.name}`,
-        });
-      }
-
-      if (item.quantity > ticketType.maxPerOrder) {
-        return res.status(400).json({
-          message: `Maximum ${ticketType.maxPerOrder} tickets allowed per order for ${ticketType.name}`,
-        });
+      if (!ticketType) {
+        // Rollback reservations made in this loop before returning
+        for (const r of reservedTicketTypes) {
+          await TicketType.findByIdAndUpdate(r._id, { $inc: { sold: -r.quantity } });
+        }
+        const info = await TicketType.findById(item.ticketType).select("name quantity sold maxPerOrder isActive");
+        if (!info || !info.isActive) {
+          return res.status(400).json({ message: "Invalid or inactive ticket type." });
+        }
+        if (item.quantity > (info.maxPerOrder || Infinity)) {
+          return res.status(400).json({ message: `Maximum ${info.maxPerOrder} ticket(s) per order for "${info.name}".` });
+        }
+        return res.status(400).json({ message: `Only ${info.quantity - info.sold} ticket(s) left for "${info.name}".` });
       }
 
       item.price = ticketType.price;
-      subtotal += ticketType.price * item.quantity;
+      reservedTicketTypes.push({ _id: ticketType._id, quantity: item.quantity });
     }
 
-    // ── Promo code validation ─────────────────────────────────────────────────
+    const subtotal = items.reduce((s, it) => s + it.price * it.quantity, 0);
+
+    // ── M-3: Atomically validate + claim promo code ───────────────────────────
     let discountAmount = 0;
     let promoCodeDoc = null;
     if (promoCodeStr) {
-      promoCodeDoc = await PromoCode.findOne({
-        code: promoCodeStr.toUpperCase().trim(),
-        isActive: true,
-        $or: [{ event: eventId }, { event: null }],
-      });
+      promoCodeDoc = await PromoCode.findOneAndUpdate(
+        {
+          code: promoCodeStr.toUpperCase().trim(),
+          isActive: true,
+          $and: [
+            { $or: [{ event: eventId }, { event: null }] },
+            { $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] },
+            { $or: [{ maxUses: null }, { $expr: { $lt: ["$usedCount", "$maxUses"] } }] },
+          ],
+        },
+        { $inc: { usedCount: 1 } },
+        { new: false },
+      );
 
-      if (!promoCodeDoc || !promoCodeDoc.isValid) {
+      if (!promoCodeDoc) {
+        for (const r of reservedTicketTypes) {
+          await TicketType.findByIdAndUpdate(r._id, { $inc: { sold: -r.quantity } });
+        }
         return res.status(400).json({ message: "Invalid or expired promo code." });
       }
+
       if (promoCodeDoc.minOrderAmount > 0 && subtotal < promoCodeDoc.minOrderAmount) {
+        await PromoCode.findByIdAndUpdate(promoCodeDoc._id, { $inc: { usedCount: -1 } });
+        for (const r of reservedTicketTypes) {
+          await TicketType.findByIdAndUpdate(r._id, { $inc: { sold: -r.quantity } });
+        }
         return res.status(400).json({
-          message: `Minimum order amount of $${promoCodeDoc.minOrderAmount.toFixed(2)} required for this promo code.`,
+          message: `Minimum order of $${promoCodeDoc.minOrderAmount.toFixed(2)} required for this promo code.`,
         });
       }
 
-      discountAmount = promoCodeDoc.discountType === "percentage"
-        ? Math.round(subtotal * (promoCodeDoc.discountValue / 100) * 100) / 100
-        : Math.min(promoCodeDoc.discountValue, subtotal);
+      promoCodeId = promoCodeDoc._id;
+      discountAmount =
+        promoCodeDoc.discountType === "percentage"
+          ? Math.round(subtotal * (promoCodeDoc.discountValue / 100) * 100) / 100
+          : Math.min(promoCodeDoc.discountValue, subtotal);
     }
 
     const discountedSubtotal = Math.max(subtotal - discountAmount, 0);
 
     // ── Fee absorption ────────────────────────────────────────────────────────
-    // Check if the event organizer absorbs fees (event-level default).
-    // Per-ticket-type override is respected: if ALL items have organizerAbsorbsFee=true,
-    // the buyer pays face value only.
-    const event = await Event.findById(eventId).select("organizerAbsorbsFees organizer");
-    const allItemsAbsorbFee = items.every((item) => {
-      const tt = item._ticketTypeDoc; // not populated yet — fetch below if needed
-      return false; // fallback: rely on event-level flag
-    });
-    const absorbFees = event?.organizerAbsorbsFees || false;
-
-    const platformFee = absorbFees ? 0 : Math.round(discountedSubtotal * 0.03);
-    const paymentFee = absorbFees ? 0 : Math.round(discountedSubtotal * 0.029 + 30);
-    const finalAmount = discountedSubtotal + platformFee + paymentFee;
+    const absorbFees = event.organizerAbsorbsFees || false;
+    const platformFee = absorbFees ? 0 : Math.round(discountedSubtotal * 0.03 * 100) / 100;
+    const paymentFee = absorbFees ? 0 : Math.round((discountedSubtotal * 0.029 + 0.3) * 100) / 100;
+    const finalAmount = Math.round((discountedSubtotal + platformFee + paymentFee) * 100) / 100;
 
     // ── Tracking attribution ──────────────────────────────────────────────────
     let trackingLinkDoc = null;
@@ -130,21 +155,61 @@ const createOrder = async (req, res, next) => {
       billingDetails,
     });
 
-    await order.save();
+    // ── C-4: $0 orders — skip Stripe, fulfill immediately ────────────────────
+    if (finalAmount <= 0) {
+      order.status = "completed";
+      await order.save();
+      orderSaved = true;
 
-    // Increment promo code usage
-    if (promoCodeDoc) {
-      await PromoCode.findByIdAndUpdate(promoCodeDoc._id, { $inc: { usedCount: 1 } });
+      const tickets = [];
+      for (const item of order.items) {
+        for (let i = 0; i < item.quantity; i++) {
+          const ticket = new Ticket({
+            order: order._id,
+            event: eventId,
+            ticketType: item.ticketType,
+            holder: req.user._id,
+          });
+          await ticket.save();
+          ticket.qrCode = await generateQRCode(generateTicketQRData(ticket));
+          await ticket.save();
+          tickets.push(ticket);
+        }
+      }
+
+      await Event.findByIdAndUpdate(eventId, { $inc: { soldTickets: tickets.length, totalSales: subtotal } });
+      if (trackingLinkDoc) {
+        await TrackingLink.findByIdAndUpdate(trackingLinkDoc._id, { $inc: { orders: 1, revenue: subtotal } });
+      }
+
+      notify({
+        userId: req.user._id,
+        type: "order_confirmed",
+        title: "Booking confirmed!",
+        message: `Your ${tickets.length} ticket(s) for "${event.title}" are confirmed. Order #${order.orderNumber}.`,
+        link: "/user/tickets",
+      }).catch(() => {});
+
+      return res.status(201).json({
+        message: "Order created and fulfilled",
+        order,
+        clientSecret: null,
+        tickets,
+        priceSummary: { subtotal, discountAmount, discountedSubtotal, platformFee, paymentFee, total: 0, feesAbsorbed: absorbFees },
+      });
     }
 
-    const finalAmountCents = Math.max(Math.round(finalAmount * 100), 50); // Stripe minimum 50 cents
+    // ── Paid order: save first, then create Stripe PaymentIntent ─────────────
+    await order.save();
+    orderSaved = true;
+
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: finalAmountCents,
+      amount: Math.round(finalAmount * 100),
       currency: "usd",
       metadata: {
         orderId: order._id.toString(),
         userId: req.user._id.toString(),
-        eventId: eventId,
+        eventId,
         promoCode: promoCodeDoc?.code || "",
       },
     });
@@ -152,7 +217,7 @@ const createOrder = async (req, res, next) => {
     order.paymentIntentId = paymentIntent.id;
     await order.save();
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "Order created successfully",
       order,
       clientSecret: paymentIntent.client_secret,
@@ -167,6 +232,17 @@ const createOrder = async (req, res, next) => {
       },
     });
   } catch (error) {
+    // Roll back pre-reserved inventory and promo code if the order was never saved
+    if (!orderSaved) {
+      await Promise.all([
+        ...reservedTicketTypes.map((r) =>
+          TicketType.findByIdAndUpdate(r._id, { $inc: { sold: -r.quantity } }).catch(() => {}),
+        ),
+        promoCodeId
+          ? PromoCode.findByIdAndUpdate(promoCodeId, { $inc: { usedCount: -1 } }).catch(() => {})
+          : Promise.resolve(),
+      ]);
+    }
     next(error);
   }
 };
@@ -184,56 +260,44 @@ const confirmOrder = async (req, res, next) => {
       });
     }
 
-    const order = await Order.findById(orderId)
+    // Quick ownership + status check before hitting Stripe
+    const orderCheck = await Order.findById(orderId).select("user status paymentIntentId event");
+    if (!orderCheck) return res.status(404).json({ message: "Order not found" });
+    if (orderCheck.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+    if (orderCheck.status !== "pending") {
+      if (orderCheck.status === "completed") return res.status(400).json({ message: "Order is already completed." });
+      return res.status(400).json({ message: `Order is ${orderCheck.status} and cannot be confirmed.` });
+    }
+    if (!orderCheck.paymentIntentId) {
+      return res.status(400).json({ message: "No PaymentIntent associated with this order." });
+    }
+
+    // Verify payment succeeded on Stripe before claiming the order
+    const paymentIntent = await stripe.paymentIntents.retrieve(orderCheck.paymentIntentId);
+    if (paymentIntent.status !== "succeeded") {
+      return res.status(400).json({ message: `Payment not completed. Status: ${paymentIntent.status}` });
+    }
+    if (paymentMethodId && paymentIntent.payment_method !== paymentMethodId) {
+      return res.status(400).json({ message: "Payment method mismatch." });
+    }
+
+    // H-5: Atomically claim the order — exactly one of confirmOrder and the Stripe
+    // webhook will win this findOneAndUpdate; the other will get null and skip.
+    const order = await Order.findOneAndUpdate(
+      { _id: orderId, status: "pending" },
+      { $set: { status: "completed", paymentMethod: paymentIntent.payment_method } },
+      { new: false },
+    )
       .populate("items.ticketType")
       .populate("event", "title startDate location")
       .populate("user", "firstName lastName email");
 
     if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-
-    if (order.user._id.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Not authorized" });
-    }
-
-    if (order.status === "completed") {
+      // Webhook already fulfilled this order — tell the client it's done
       return res.status(400).json({ message: "Order is already completed." });
     }
-    if (order.status === "cancelled" || order.status === "failed") {
-      return res.status(400).json({
-        message: `Order is ${order.status} and cannot be confirmed.`,
-      });
-    }
-    if (!order.paymentIntentId) {
-      return res.status(400).json({
-        message: "No PaymentIntent associated with this order.",
-      });
-    }
-
-    // The frontend already confirmed the payment via stripe.confirmCardPayment().
-    // Retrieve the PaymentIntent to verify its status — never confirm again.
-    let paymentIntent;
-    try {
-      paymentIntent = await stripe.paymentIntents.retrieve(order.paymentIntentId);
-    } catch (stripeErr) {
-      throw stripeErr;
-    }
-
-    if (paymentIntent.status !== "succeeded") {
-      return res.status(400).json({
-        message: `Payment not completed. Status: ${paymentIntent.status}`,
-      });
-    }
-
-    // Verify the payment method matches what was passed (sanity check)
-    if (paymentMethodId && paymentIntent.payment_method !== paymentMethodId) {
-      return res.status(400).json({ message: "Payment method mismatch." });
-    }
-
-    order.status = "completed";
-    order.paymentMethod = paymentIntent.payment_method;
-    await order.save();
 
     const payment = new Payment({
       order: order._id,
@@ -248,9 +312,7 @@ const confirmOrder = async (req, res, next) => {
     let totalTicketsSold = 0;
     let grossRevenue = 0;
     for (const item of order.items) {
-      await TicketType.findByIdAndUpdate(item.ticketType._id, {
-        $inc: { sold: item.quantity },
-      });
+      // NOTE: sold count is pre-reserved in createOrder (C-3) — do NOT increment here
       totalTicketsSold += item.quantity;
       grossRevenue += (item.price || 0) * item.quantity;
 
@@ -306,7 +368,7 @@ const confirmOrder = async (req, res, next) => {
         email: { to: order.user.email, subject, html },
       });
     } catch (emailErr) {
-      console.error('Order confirmation notification failed:', emailErr.message);
+      logger.error('Order confirmation notification failed:', emailErr.message);
     }
 
     res.json({

@@ -476,10 +476,19 @@ const getAnalytics = async (req, res, next) => {
 
 // ─── POST /api/admin/setup ────────────────────────────────────────────────────
 // One-time bootstrap: promotes the authenticated user to admin.
+// Requires ADMIN_SETUP_TOKEN env var to prevent unauthorized promotions.
 // Permanently disabled once any admin account exists in the database.
 const setupInitialAdmin = async (req, res, next) => {
   try {
-    const existingAdmin = await User.findOne({ role: "admin" });
+    const setupToken = process.env.ADMIN_SETUP_TOKEN;
+    if (!setupToken) {
+      return res.status(503).json({ message: "Admin setup is not configured on this server." });
+    }
+    if (req.body.token !== setupToken) {
+      return res.status(403).json({ message: "Invalid setup token." });
+    }
+
+    const existingAdmin = await User.findOne({ role: { $in: ["admin", "superadmin"] } });
     if (existingAdmin) {
       return res.status(403).json({
         message: "An admin account already exists. This endpoint is disabled.",
@@ -494,7 +503,8 @@ const setupInitialAdmin = async (req, res, next) => {
 
     return res.json({
       message: "You have been promoted to admin. Please sign out and sign back in.",
-      user,
+      userId: user._id,
+      email: user.email,
     });
   } catch (error) {
     next(error);

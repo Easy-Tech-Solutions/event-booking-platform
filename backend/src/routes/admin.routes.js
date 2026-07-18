@@ -44,74 +44,78 @@ import {
 
 const router = express.Router();
 
-// One-time bootstrap — only works when no admin exists; requires login only
+// One-time bootstrap — requires ADMIN_SETUP_TOKEN env var + valid login to prevent unauthorized promotion
 router.post("/setup", authenticate, setupInitialAdmin);
 
-// All routes below require admin or superadmin role
-router.use(authenticate, authorize("admin", "superadmin", "support_agent"));
+// All routes below require authentication
+router.use(authenticate);
+
+// Support agents may only access support tickets and organizer requests — nothing else
+const adminOnly = authorize("admin", "superadmin");
+const adminOrSupport = authorize("admin", "superadmin", "support_agent");
 
 // ── User Management ───────────────────────────────────────────────────────────
-router.get("/users", getAllUsers);
-router.get("/users/:id", getUserById);
-router.patch("/users/:id/suspend", authorize("admin", "superadmin"), suspendUser);
-router.patch("/users/:id/unsuspend", authorize("admin", "superadmin"), unsuspendUser);
-router.delete("/users/:id", authorize("admin", "superadmin"), deleteUser);
-router.patch("/users/:id/role", authorize("admin", "superadmin"), changeUserRole);
-router.patch("/users/:id/permissions", authorize("admin", "superadmin"), updateUserPermissions);
-router.patch("/users/:id/verified-badge", authorize("admin", "superadmin"), grantVerifiedBadge);
+router.get("/users", adminOnly, getAllUsers);
+router.get("/users/:id", adminOnly, getUserById);
+router.patch("/users/:id/suspend", adminOnly, suspendUser);
+router.patch("/users/:id/unsuspend", adminOnly, unsuspendUser);
+router.delete("/users/:id", adminOnly, deleteUser);
+router.patch("/users/:id/role", adminOnly, changeUserRole);
+router.patch("/users/:id/permissions", adminOnly, updateUserPermissions);
+router.patch("/users/:id/verified-badge", adminOnly, grantVerifiedBadge);
 
 // ── Organizer Approval ────────────────────────────────────────────────────────
-router.get("/organizer-requests", getOrganizerRequests);
-router.patch("/users/:id/approve-organizer", authorize("admin", "superadmin"), approveOrganizer);
-router.patch("/users/:id/reject-organizer", authorize("admin", "superadmin"), rejectOrganizer);
+router.get("/organizer-requests", adminOrSupport, getOrganizerRequests);
+router.patch("/users/:id/approve-organizer", adminOnly, approveOrganizer);
+router.patch("/users/:id/reject-organizer", adminOnly, rejectOrganizer);
 
 // ── Event Management ──────────────────────────────────────────────────────────
-router.get("/events", getAllEvents);
-router.patch("/events/:id/status", authorize("admin", "superadmin"), changeEventStatus);
+router.get("/events", adminOnly, getAllEvents);
+router.patch("/events/:id/status", adminOnly, changeEventStatus);
 
 // ── Order Management ──────────────────────────────────────────────────────────
-router.get("/orders", getAllOrders);
+router.get("/orders", adminOnly, getAllOrders);
 
 // ── Analytics ─────────────────────────────────────────────────────────────────
-router.get("/analytics", authorize("admin", "superadmin"), getAnalytics);
+router.get("/analytics", adminOnly, getAnalytics);
 
 // ── Support Tickets ───────────────────────────────────────────────────────────
-router.get("/support-tickets", getAllSupportTickets);
-router.get("/support-tickets/:id", getSupportTicketById);
-router.patch("/support-tickets/:id", updateSupportTicket);
+router.get("/support-tickets", adminOrSupport, getAllSupportTickets);
+router.get("/support-tickets/:id", adminOrSupport, getSupportTicketById);
+router.patch("/support-tickets/:id", adminOrSupport, updateSupportTicket);
 
 // ── Event Tickets (event admission tickets) ───────────────────────────────────
-router.get("/tickets", getAllTickets);
-router.patch("/tickets/:id/void", authorize("admin", "superadmin"), voidTicket);
+router.get("/tickets", adminOnly, getAllTickets);
+router.patch("/tickets/:id/void", adminOnly, voidTicket);
 
 // ── Blog (admin view — all statuses) ─────────────────────────────────────────
-router.get("/blog", getAdminBlogPosts);
+router.get("/blog", adminOnly, getAdminBlogPosts);
 
 // ── Categories ────────────────────────────────────────────────────────────────
-router.get("/categories", getAdminCategories);
+router.get("/categories", adminOnly, getAdminCategories);
 
 // ── Custom Roles ──────────────────────────────────────────────────────────────
-router.get("/custom-roles", getCustomRoles);
-router.post("/custom-roles", authorize("admin", "superadmin"), createCustomRole);
-router.put("/custom-roles/:id", authorize("admin", "superadmin"), updateCustomRole);
-router.delete("/custom-roles/:id", authorize("admin", "superadmin"), deleteCustomRole);
-router.patch("/users/:id/custom-role", authorize("admin", "superadmin"), assignCustomRole);
+router.get("/custom-roles", adminOnly, getCustomRoles);
+router.post("/custom-roles", adminOnly, createCustomRole);
+router.put("/custom-roles/:id", adminOnly, updateCustomRole);
+router.delete("/custom-roles/:id", adminOnly, deleteCustomRole);
+router.patch("/users/:id/custom-role", adminOnly, assignCustomRole);
 
 // ── Permissions ───────────────────────────────────────────────────────────────
-router.get("/permissions", getPermissions);
-router.post("/permissions", authorize("admin", "superadmin"), createPermission);
-router.put("/permissions/:id", authorize("admin", "superadmin"), updatePermission);
-router.delete("/permissions/:id", authorize("admin", "superadmin"), deletePermission);
+router.get("/permissions", adminOnly, getPermissions);
+router.post("/permissions", adminOnly, createPermission);
+router.put("/permissions/:id", adminOnly, updatePermission);
+router.delete("/permissions/:id", adminOnly, deletePermission);
 
 // ── Payouts ───────────────────────────────────────────────────────────────────
-router.get("/payouts", authorize("admin", "superadmin"), getPayouts);
-router.post("/payouts/calculate", authorize("admin", "superadmin"), calculatePayouts);
-router.patch("/payouts/:id", authorize("admin", "superadmin"), updatePayoutStatus);
+router.get("/payouts", adminOnly, getPayouts);
+router.post("/payouts/calculate", adminOnly, calculatePayouts);
+router.patch("/payouts/:id", adminOnly, updatePayoutStatus);
 
 // ── Trust & Safety ────────────────────────────────────────────────────────────
-router.get("/reports", getEventReports);
-router.patch("/reports/:id", authorize("admin", "superadmin"), updateEventReport);
-router.get("/kyc", authorize("admin", "superadmin"), getKycSubmissions);
-router.patch("/kyc/:id", authorize("admin", "superadmin"), updateKycStatus);
+router.get("/reports", adminOnly, getEventReports);
+router.patch("/reports/:id", adminOnly, updateEventReport);
+router.get("/kyc", adminOnly, getKycSubmissions);
+router.patch("/kyc/:id", adminOnly, updateKycStatus);
 
 export default router;

@@ -26,7 +26,6 @@ const paymentSchema = new mongoose.Schema({
   },
   paymentMethod: {
     type: String,
-    required: true
   },
   refunds: [{
     amount: Number,
@@ -44,5 +43,7 @@ const paymentSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+paymentSchema.index({ order: 1 });
 
 export default mongoose.model('Payment', paymentSchema);
