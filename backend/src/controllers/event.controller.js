@@ -73,11 +73,16 @@ const getEvents = async (req, res, next) => {
     if (status) {
       const validStatuses = ["draft", "published", "cancelled", "completed"];
       if (!validStatuses.includes(status)) {
-        return res
-          .status(400)
-          .json({
-            message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
-          });
+        return res.status(400).json({
+          message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
+        });
+      }
+      // L-5: Only authenticated organizers/admins may query draft events
+      if (status === "draft") {
+        const role = req.user?.role;
+        if (!role || (role !== "organizer" && role !== "admin" && role !== "superadmin")) {
+          return res.status(403).json({ message: "Not authorized to view draft events." });
+        }
       }
       query.status = status;
     } else {

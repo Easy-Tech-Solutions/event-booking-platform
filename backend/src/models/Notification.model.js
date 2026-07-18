@@ -5,7 +5,8 @@ const notificationSchema = new mongoose.Schema({
   type: {
     type: String,
     enum: ['order_confirmed', 'event_cancelled', 'event_updated', 'organizer_approved',
-           'organizer_rejected', 'ticket_transferred', 'support_reply', 'check_in', 'blast_message'],
+           'organizer_rejected', 'ticket_transferred', 'support_reply', 'check_in', 'blast_message',
+           'comp_ticket'],
     required: true,
   },
   title: { type: String, required: true },

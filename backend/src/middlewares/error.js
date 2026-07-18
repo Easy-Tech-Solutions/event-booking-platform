@@ -33,9 +33,13 @@ const errorHandler = (err, req, res, next) => {
     return res.status(401).json({ message: 'Token expired' });
   }
 
-  // Default error
-  res.status(err.statusCode || 500).json({
-    message: err.message || 'Internal Server Error'
+  // Default error — never expose internal error details in production
+  const statusCode = err.statusCode || 500;
+  const isOperational = statusCode < 500;
+  res.status(statusCode).json({
+    message: isOperational || process.env.NODE_ENV !== 'production'
+      ? err.message || 'Internal Server Error'
+      : 'Internal Server Error',
   });
 };
 

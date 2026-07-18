@@ -380,18 +380,16 @@ const googleAuth = async (req, res, next) => {
     if (!credential) return res.status(400).json({ message: 'Google credential is required.' });
     if (!env.GOOGLE_CLIENT_ID) return res.status(501).json({ message: 'Google sign-in is not configured.' });
 
-    // Decode the JWT payload — pad to valid base64 then decode
-    const [, payloadB64] = credential.split('.');
-    const padded = payloadB64.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(payloadB64.length / 4) * 4, '=');
-    const payload = JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+    // Verify the token server-side via Google's tokeninfo endpoint — this checks the
+    // signature, expiry, and audience without any additional library.
+    const tokenInfoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`);
+    if (!tokenInfoRes.ok) {
+      return res.status(401).json({ message: 'Invalid or expired Google token.' });
+    }
+    const payload = await tokenInfoRes.json();
 
-    // Verify audience matches our client ID
     if (payload.aud !== env.GOOGLE_CLIENT_ID) {
       return res.status(401).json({ message: 'Invalid Google token audience.' });
-    }
-    // Verify token is not expired
-    if (payload.exp < Math.floor(Date.now() / 1000)) {
-      return res.status(401).json({ message: 'Google token has expired.' });
     }
 
     const { email, given_name: firstName, family_name: lastName, sub: googleId } = payload;

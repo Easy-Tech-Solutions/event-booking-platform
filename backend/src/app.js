@@ -112,6 +112,30 @@ app.use("/api/", limiter);
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
 app.use("/api/auth/forgot-password", authLimiter);
+app.use("/api/auth/google", authLimiter);
+app.use("/api/auth/2fa/challenge", authLimiter);
+
+const orderLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: "Too many order requests, please slow down.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: "Too many AI generation requests, please slow down.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: "Too many upload requests, please slow down.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Compression
 app.use(compression());
@@ -141,14 +165,14 @@ app.get("/", (req, res) => res.redirect("/api/health"));
 app.use("/api/auth", authRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/ticket-types", ticketTypeRoutes);
-app.use("/api/orders", orderRoutes);
+app.use("/api/orders", orderLimiter, orderRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/blog", blogRoutes);
-app.use("/api/upload", uploadRoutes);
+app.use("/api/upload", uploadLimiter, uploadRoutes);
 app.use("/api/live", liveRoutes);
 app.use("/api/integrations", integrationRoutes);
 app.use("/api/calendar", calendarRoutes);
@@ -157,7 +181,7 @@ app.use("/api/promo-codes", promoCodeRoutes);
 app.use("/api/seats", seatRoutes);
 app.use("/api/tracking-links", trackingLinkRoutes);
 app.use("/api/developer", developerRoutes);
-app.use("/api/ai", aiRoutes);
+app.use("/api/ai", aiLimiter, aiRoutes);
 
 // Error handling
 app.use(notFound);

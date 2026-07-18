@@ -78,11 +78,9 @@ const orderSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// orderSchema.pre('save', async function(next) {
-//   if (!this.orderNumber) {
-//     this.orderNumber = 'ORD-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
-//   }
-//   next();
-// });
+orderSchema.index({ user: 1 });
+orderSchema.index({ user: 1, event: 1 });
+orderSchema.index({ paymentIntentId: 1 });
+orderSchema.index({ status: 1, createdAt: -1 });
 
 export default mongoose.model('Order', orderSchema);

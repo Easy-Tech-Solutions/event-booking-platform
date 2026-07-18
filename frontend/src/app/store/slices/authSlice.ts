@@ -6,12 +6,15 @@ export interface AuthUser {
   firstName: string;
   lastName: string;
   email: string;
-  role: 'attendee' | 'organizer' | 'admin';
+  role: 'attendee' | 'organizer' | 'admin' | 'superadmin' | 'support_agent';
   avatar?: string;
   phone?: string;
   isVerified: boolean;
   organizerStatus?: 'none' | 'pending' | 'approved' | 'rejected';
   isSuspended?: boolean;
+  isVerifiedOrganizer?: boolean;
+  zoomConnected?: boolean;
+  googleCalendarConnected?: boolean;
 }
 
 interface AuthState {
@@ -23,12 +26,15 @@ interface AuthState {
   error: string | null;
 }
 
+const storedToken = localStorage.getItem('accessToken');
 const initialState: AuthState = {
   user: null,
-  accessToken: localStorage.getItem('accessToken'),
-  isAuthenticated: !!localStorage.getItem('accessToken'),
+  accessToken: storedToken,
+  // L-3: Don't trust localStorage alone — isAuthenticated is false until
+  // fetchProfile confirms the token is valid against the server.
+  isAuthenticated: false,
   isLoading: false,
-  isInitializing: !!localStorage.getItem('accessToken'),
+  isInitializing: !!storedToken,
   error: null,
 };
 

@@ -1,8 +1,14 @@
 import stripe from "../config/stripe.js";
 import Order from "../models/Order.model.js";
+import Ticket from "../models/Ticket.model.js";
 import Payment from "../models/Payment.model.js";
+import Event from "../models/Event.model.js";
+import TrackingLink from "../models/TrackingLink.model.js";
 import env from "../config/env.js";
 import logger from "../utils/logger.js";
+import { generateQRCode, generateTicketQRData } from "../utils/qrcode.js";
+import { notify } from "../utils/notify.js";
+import { orderConfirmationEmailTemplate } from "../utils/emailTemplates.js";
 
 const { STRIPE_WEBHOOK_SECRET } = env;
 
@@ -48,22 +54,90 @@ const handleStripeWebhook = async (req, res) => {
 
 const handlePaymentSucceeded = async (paymentIntent) => {
   try {
-    const payment = await Payment.findOne({
+    // C-2: Atomically claim the order — only process if it's still pending.
+    // If confirmOrder already fulfilled it, this returns null and we skip.
+    const order = await Order.findOneAndUpdate(
+      { paymentIntentId: paymentIntent.id, status: "pending" },
+      { $set: { status: "completed", paymentMethod: paymentIntent.payment_method } },
+      { new: false },
+    )
+      .populate("items.ticketType", "name price")
+      .populate("event", "title startDate location")
+      .populate("user", "firstName lastName email");
+
+    if (!order) {
+      logger.info(`Webhook: PI ${paymentIntent.id} already fulfilled by confirmOrder — skipping`);
+      return;
+    }
+
+    logger.info(`Webhook fulfilling order ${order._id} for PI ${paymentIntent.id}`);
+
+    // Record payment
+    await Payment.create({
+      order: order._id,
       stripePaymentIntentId: paymentIntent.id,
+      amount: order.totalAmount,
+      status: "succeeded",
+      paymentMethod: paymentIntent.payment_method,
     });
 
-    if (payment) {
-      payment.status = "succeeded";
-      await payment.save();
+    // Generate tickets
+    const tickets = [];
+    let totalTicketsSold = 0;
+    let grossRevenue = 0;
+    for (const item of order.items) {
+      // NOTE: sold count pre-reserved in createOrder (C-3) — do NOT increment here
+      totalTicketsSold += item.quantity;
+      grossRevenue += (item.price || 0) * item.quantity;
 
-      const order = await Order.findById(payment.order);
-      if (order && order.status === "pending") {
-        order.status = "completed";
-        await order.save();
+      for (let i = 0; i < item.quantity; i++) {
+        const ticket = new Ticket({
+          order: order._id,
+          event: order.event._id || order.event,
+          ticketType: item.ticketType._id || item.ticketType,
+          holder: order.user._id || order.user,
+        });
+        await ticket.save();
+        ticket.qrCode = await generateQRCode(generateTicketQRData(ticket));
+        await ticket.save();
+        tickets.push(ticket);
       }
     }
 
-    logger.info(`Payment succeeded: ${paymentIntent.id}`);
+    await Event.findByIdAndUpdate(order.event._id || order.event, {
+      $inc: { soldTickets: totalTicketsSold, totalSales: grossRevenue },
+    });
+
+    if (order.trackingLink) {
+      await TrackingLink.findByIdAndUpdate(order.trackingLink, {
+        $inc: { orders: 1, revenue: grossRevenue },
+      });
+    }
+
+    try {
+      const { subject, html } = orderConfirmationEmailTemplate({
+        firstName: order.user.firstName,
+        orderNumber: order.orderNumber,
+        eventTitle: order.event.title,
+        eventDate: order.event.startDate,
+        eventLocation: order.event.location,
+        items: order.items,
+        totalAmount: order.totalAmount,
+        ticketCount: tickets.length,
+      });
+      await notify({
+        userId: order.user._id || order.user,
+        type: "order_confirmed",
+        title: "Booking confirmed!",
+        message: `Your ${tickets.length} ticket(s) for "${order.event.title}" are confirmed. Order #${order.orderNumber}.`,
+        link: "/user/tickets",
+        email: { to: order.user.email, subject, html },
+      });
+    } catch (notifyErr) {
+      logger.error("Webhook: notification failed for order", order._id, notifyErr.message);
+    }
+
+    logger.info(`Webhook: fulfilled order ${order._id} — ${tickets.length} ticket(s) generated`);
   } catch (error) {
     logger.error("Error handling payment success:", error);
   }

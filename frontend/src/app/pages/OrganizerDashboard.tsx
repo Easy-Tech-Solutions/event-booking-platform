@@ -7,7 +7,7 @@ import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { LayoutDashboard, Calendar, Plus, DollarSign, BarChart3, Trash2, Eye, TrendingUp, Users, Ticket, Link2, Copy, ExternalLink, CheckCircle } from 'lucide-react';
+import { LayoutDashboard, Calendar, Plus, DollarSign, BarChart3, Trash2, Eye, TrendingUp, Users, Ticket, Link2, Copy, ExternalLink, CheckCircle, Tag } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useAppDispatch, useAppSelector } from '../store';
 import { fetchMyEvents, deleteEvent } from '../store/slices/eventsSlice';
@@ -15,12 +15,18 @@ import apiClient from '../api/client';
 
 export function OrganizerDashboard() {
   const location = useLocation();
+  const dispatch = useAppDispatch();
+
+  // L-4: Fetch once at parent level — children just read from Redux state
+  useEffect(() => { dispatch(fetchMyEvents()); }, [dispatch]);
+
   const sidebarItems = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard, path: '/organizer/dashboard' },
     { id: 'events', label: 'My Events', icon: Calendar, path: '/organizer/events' },
     { id: 'create', label: 'Create Event', icon: Plus, path: '/organizer/create' },
     { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/organizer/analytics' },
     { id: 'tracking', label: 'Tracking Links', icon: Link2, path: '/organizer/tracking-links' },
+    { id: 'promos', label: 'Promo Codes', icon: Tag, path: '/organizer/promo-codes' },
   ];
 
   return (
@@ -50,6 +56,7 @@ export function OrganizerDashboard() {
               <Route path="events" element={<MyEvents />} />
               <Route path="analytics" element={<Analytics />} />
               <Route path="tracking-links" element={<TrackingLinks />} />
+              <Route path="promo-codes" element={<PromoCodes />} />
               <Route index element={<Overview />} />
             </Routes>
           </div>
@@ -60,10 +67,7 @@ export function OrganizerDashboard() {
 }
 
 function Overview() {
-  const dispatch = useAppDispatch();
   const { myEvents, isLoading } = useAppSelector((state) => state.events);
-
-  useEffect(() => { dispatch(fetchMyEvents()); }, [dispatch]);
 
   const totalTicketsSold = myEvents.reduce((s: number, e: any) => s + (e.soldTickets || 0), 0);
   const totalRevenue = myEvents.reduce((s: number, e: any) => s + (e.totalSales || 0), 0);
@@ -121,8 +125,6 @@ function MyEvents() {
   const { myEvents, isLoading } = useAppSelector((state) => state.events);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  useEffect(() => { dispatch(fetchMyEvents()); }, [dispatch]);
-
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this event?')) return;
     setDeletingId(id);
@@ -165,6 +167,162 @@ function MyEvents() {
   );
 }
 
+// M-9: Organizer promo code manager
+function PromoCodes() {
+  const { myEvents } = useAppSelector((state) => state.events);
+  const [codes, setCodes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState({
+    code: '', discountType: 'percentage', discountValue: '',
+    maxUses: '', minOrderAmount: '', expiresAt: '', eventId: '',
+  });
+  const [formError, setFormError] = useState('');
+
+  useEffect(() => {
+    apiClient.get('/promo-codes')
+      .then((r) => setCodes(r.data.promoCodes || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleCreate = async () => {
+    if (!form.code.trim() || !form.discountValue) {
+      setFormError('Code and discount value are required.');
+      return;
+    }
+    setCreating(true);
+    setFormError('');
+    try {
+      const payload: any = {
+        code: form.code.trim().toUpperCase(),
+        discountType: form.discountType,
+        discountValue: Number(form.discountValue),
+      };
+      if (form.maxUses) payload.maxUses = Number(form.maxUses);
+      if (form.minOrderAmount) payload.minOrderAmount = Number(form.minOrderAmount);
+      if (form.expiresAt) payload.expiresAt = form.expiresAt;
+      if (form.eventId) payload.event = form.eventId;
+      const res = await apiClient.post('/promo-codes', payload);
+      setCodes((prev) => [res.data.promoCode, ...prev]);
+      setForm({ code: '', discountType: 'percentage', discountValue: '', maxUses: '', minOrderAmount: '', expiresAt: '', eventId: '' });
+    } catch (err: any) {
+      setFormError(err.response?.data?.message || 'Failed to create promo code.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const toggleActive = async (code: any) => {
+    try {
+      const res = await apiClient.patch(`/promo-codes/${code._id}`, { isActive: !code.isActive });
+      setCodes((prev) => prev.map((c) => c._id === code._id ? (res.data.promoCode || { ...c, isActive: !c.isActive }) : c));
+    } catch {}
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this promo code?')) return;
+    try {
+      await apiClient.delete(`/promo-codes/${id}`);
+      setCodes((prev) => prev.filter((c) => c._id !== id));
+    } catch {}
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold mb-1">Promo Codes</h2>
+        <p className="text-muted-foreground text-sm">Create discount codes for your events.</p>
+      </div>
+      <Card className="p-6">
+        <h3 className="font-semibold mb-4">Create New Code</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label>Code</Label>
+            <Input value={form.code} onChange={(e) => setForm((p) => ({ ...p, code: e.target.value.toUpperCase() }))} placeholder="SUMMER20" />
+          </div>
+          <div>
+            <Label>Discount Type</Label>
+            <Select value={form.discountType} onValueChange={(v) => setForm((p) => ({ ...p, discountType: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="percentage">Percentage (%)</SelectItem>
+                <SelectItem value="fixed">Fixed Amount ($)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Discount Value</Label>
+            <Input type="number" min="0" value={form.discountValue} onChange={(e) => setForm((p) => ({ ...p, discountValue: e.target.value }))} placeholder={form.discountType === 'percentage' ? '20' : '10.00'} />
+          </div>
+          <div>
+            <Label>Max Uses <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Input type="number" min="1" value={form.maxUses} onChange={(e) => setForm((p) => ({ ...p, maxUses: e.target.value }))} placeholder="Unlimited" />
+          </div>
+          <div>
+            <Label>Min Order Amount <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Input type="number" min="0" step="0.01" value={form.minOrderAmount} onChange={(e) => setForm((p) => ({ ...p, minOrderAmount: e.target.value }))} placeholder="0.00" />
+          </div>
+          <div>
+            <Label>Expires At <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Input type="datetime-local" value={form.expiresAt} onChange={(e) => setForm((p) => ({ ...p, expiresAt: e.target.value }))} />
+          </div>
+          <div className="md:col-span-2">
+            <Label>Restrict to Event <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Select value={form.eventId} onValueChange={(v) => setForm((p) => ({ ...p, eventId: v }))}>
+              <SelectTrigger><SelectValue placeholder="All events" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All events</SelectItem>
+                {myEvents.map((e: any) => <SelectItem key={e._id} value={e._id}>{e.title}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {formError && <p className="text-sm text-destructive mt-3">{formError}</p>}
+        <Button className="mt-4 bg-[#004406] hover:bg-[#003305] text-white" disabled={creating} onClick={handleCreate}>
+          <Plus className="w-4 h-4 mr-2" />{creating ? 'Creating…' : 'Create Code'}
+        </Button>
+      </Card>
+
+      <div className="space-y-3">
+        {loading ? (
+          [1, 2].map((i) => <div key={i} className="h-16 bg-gray-100 animate-pulse rounded-xl" />)
+        ) : codes.length === 0 ? (
+          <Card className="p-8 text-center">
+            <Tag className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+            <p className="text-muted-foreground">No promo codes yet. Create one above.</p>
+          </Card>
+        ) : codes.map((code) => (
+          <Card key={code._id} className="p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <code className="font-mono font-bold text-sm bg-gray-100 px-2 py-0.5 rounded">{code.code}</code>
+                  <Badge variant={code.isActive ? 'default' : 'secondary'}>{code.isActive ? 'Active' : 'Inactive'}</Badge>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {code.discountType === 'percentage' ? `${code.discountValue}% off` : `$${code.discountValue} off`}
+                  {code.minOrderAmount > 0 && ` · min $${code.minOrderAmount}`}
+                  {code.maxUses != null && ` · ${code.usedCount ?? 0}/${code.maxUses} used`}
+                  {code.expiresAt && ` · expires ${new Date(code.expiresAt).toLocaleDateString()}`}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => toggleActive(code)}>
+                  {code.isActive ? 'Deactivate' : 'Activate'}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => handleDelete(code._id)} className="text-destructive hover:text-destructive">
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Analytics() {
   const { myEvents } = useAppSelector((state) => state.events);
   const salesData = myEvents.slice(0, 6).map((e: any) => ({ name: e.title?.substring(0, 15) + '...', sold: e.soldTickets || 0, revenue: e.totalSales || 0 }));
@@ -187,7 +345,6 @@ function Analytics() {
 
 function TrackingLinks() {
   const { myEvents } = useAppSelector((state) => state.events);
-  const dispatch = useAppDispatch();
 
   const [links, setLinks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -195,8 +352,6 @@ function TrackingLinks() {
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
   const [form, setForm] = useState({ label: '', eventId: '', utmSource: '', utmMedium: '', utmCampaign: '' });
   const [formError, setFormError] = useState('');
-
-  useEffect(() => { dispatch(fetchMyEvents()); }, [dispatch]);
 
   useEffect(() => {
     setLoading(true);
