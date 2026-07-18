@@ -2,7 +2,7 @@
 
 A production-ready Eventbrite-like event management and ticketing web application built with the MERN stack.
 
-## Features
+## FeatureS
 
 - Event creation and management
 - Multi-tier ticketing system
