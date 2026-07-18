@@ -8,8 +8,8 @@ const paymentSchema = new mongoose.Schema({
   },
   stripePaymentIntentId: {
     type: String,
-    required: true,
-    unique: true
+    unique: true,
+    sparse: true,
   },
   amount: {
     type: Number,

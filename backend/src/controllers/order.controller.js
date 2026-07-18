@@ -6,15 +6,12 @@ import Event from "../models/Event.model.js";
 import PromoCode from "../models/PromoCode.model.js";
 import TrackingLink from "../models/TrackingLink.model.js";
 import stripe from "../config/stripe.js";
-import { generateQRCode, generateTicketQRData } from "../utils/qrcode.js";
 import { validationResult } from "express-validator";
-import { orderConfirmationEmailTemplate } from "../utils/emailTemplates.js";
-import { notify } from "../utils/notify.js";
+import { fulfillOrder } from "../utils/fulfillOrder.js";
 import logger from "../utils/logger.js";
 
 const createOrder = async (req, res, next) => {
-  // Track for rollback if we error before the order is saved to the DB
-  const reservedTicketTypes = []; // { _id, quantity }
+  const reservedTicketTypes = [];
   let orderSaved = false;
   let promoCodeId = null;
 
@@ -33,14 +30,16 @@ const createOrder = async (req, res, next) => {
       utmSource,
       utmMedium,
       utmCampaign,
+      paymentGateway: requestedGateway,
+      recipients,
     } = req.body;
+
+    const gateway = requestedGateway === "momo" ? "momo" : "stripe";
 
     const event = await Event.findById(eventId).select("organizerAbsorbsFees organizer title startDate location");
     if (!event) return res.status(404).json({ message: "Event not found." });
 
     // ── C-3: Atomically reserve ticket inventory ──────────────────────────────
-    // Use findOneAndUpdate with $expr so the availability check and increment are
-    // a single atomic operation — prevents double-booking under concurrent load.
     for (const item of items) {
       const ticketType = await TicketType.findOneAndUpdate(
         {
@@ -54,7 +53,6 @@ const createOrder = async (req, res, next) => {
       );
 
       if (!ticketType) {
-        // Rollback reservations made in this loop before returning
         for (const r of reservedTicketTypes) {
           await TicketType.findByIdAndUpdate(r._id, { $inc: { sold: -r.quantity } });
         }
@@ -153,42 +151,17 @@ const createOrder = async (req, res, next) => {
       utmMedium: resolvedUtmMedium,
       utmCampaign: resolvedUtmCampaign,
       billingDetails,
+      paymentGateway: gateway,
+      recipients: Array.isArray(recipients) ? recipients : [],
     });
 
-    // ── C-4: $0 orders — skip Stripe, fulfill immediately ────────────────────
+    // ── C-4: $0 orders — skip payment, fulfill immediately ───────────────────
     if (finalAmount <= 0) {
       order.status = "completed";
       await order.save();
       orderSaved = true;
 
-      const tickets = [];
-      for (const item of order.items) {
-        for (let i = 0; i < item.quantity; i++) {
-          const ticket = new Ticket({
-            order: order._id,
-            event: eventId,
-            ticketType: item.ticketType,
-            holder: req.user._id,
-          });
-          await ticket.save();
-          ticket.qrCode = await generateQRCode(generateTicketQRData(ticket));
-          await ticket.save();
-          tickets.push(ticket);
-        }
-      }
-
-      await Event.findByIdAndUpdate(eventId, { $inc: { soldTickets: tickets.length, totalSales: subtotal } });
-      if (trackingLinkDoc) {
-        await TrackingLink.findByIdAndUpdate(trackingLinkDoc._id, { $inc: { orders: 1, revenue: subtotal } });
-      }
-
-      notify({
-        userId: req.user._id,
-        type: "order_confirmed",
-        title: "Booking confirmed!",
-        message: `Your ${tickets.length} ticket(s) for "${event.title}" are confirmed. Order #${order.orderNumber}.`,
-        link: "/user/tickets",
-      }).catch(() => {});
+      const tickets = await fulfillOrder(order, { eventDoc: event, userDoc: req.user });
 
       return res.status(201).json({
         message: "Order created and fulfilled",
@@ -199,10 +172,22 @@ const createOrder = async (req, res, next) => {
       });
     }
 
-    // ── Paid order: save first, then create Stripe PaymentIntent ─────────────
+    // ── Paid order: save the order first ──────────────────────────────────────
     await order.save();
     orderSaved = true;
 
+    // ── MoMo: no Stripe PI — client calls /:id/confirm-momo to complete ───────
+    if (gateway === "momo") {
+      return res.status(201).json({
+        message: "Order created, awaiting MoMo payment",
+        order,
+        clientSecret: null,
+        requiresMomoPayment: true,
+        priceSummary: { subtotal, discountAmount, discountedSubtotal, platformFee, paymentFee, total: finalAmount, feesAbsorbed: absorbFees },
+      });
+    }
+
+    // ── Stripe: create PaymentIntent ──────────────────────────────────────────
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(finalAmount * 100),
       currency: "usd",
@@ -232,7 +217,6 @@ const createOrder = async (req, res, next) => {
       },
     });
   } catch (error) {
-    // Roll back pre-reserved inventory and promo code if the order was never saved
     if (!orderSaved) {
       await Promise.all([
         ...reservedTicketTypes.map((r) =>
@@ -251,16 +235,9 @@ const confirmOrder = async (req, res, next) => {
   try {
     const { orderId, paymentMethodId } = req.body;
 
-    if (!orderId) {
-      return res.status(400).json({ message: "orderId is required." });
-    }
-    if (!paymentMethodId) {
-      return res.status(400).json({
-        message: "paymentMethodId is required. (pm_card_visa)",
-      });
-    }
+    if (!orderId) return res.status(400).json({ message: "orderId is required." });
+    if (!paymentMethodId) return res.status(400).json({ message: "paymentMethodId is required." });
 
-    // Quick ownership + status check before hitting Stripe
     const orderCheck = await Order.findById(orderId).select("user status paymentIntentId event");
     if (!orderCheck) return res.status(404).json({ message: "Order not found" });
     if (orderCheck.user.toString() !== req.user._id.toString()) {
@@ -274,7 +251,6 @@ const confirmOrder = async (req, res, next) => {
       return res.status(400).json({ message: "No PaymentIntent associated with this order." });
     }
 
-    // Verify payment succeeded on Stripe before claiming the order
     const paymentIntent = await stripe.paymentIntents.retrieve(orderCheck.paymentIntentId);
     if (paymentIntent.status !== "succeeded") {
       return res.status(400).json({ message: `Payment not completed. Status: ${paymentIntent.status}` });
@@ -283,8 +259,7 @@ const confirmOrder = async (req, res, next) => {
       return res.status(400).json({ message: "Payment method mismatch." });
     }
 
-    // H-5: Atomically claim the order — exactly one of confirmOrder and the Stripe
-    // webhook will win this findOneAndUpdate; the other will get null and skip.
+    // H-5: Atomic claim — exactly one of confirmOrder and the webhook wins
     const order = await Order.findOneAndUpdate(
       { _id: orderId, status: "pending" },
       { $set: { status: "completed", paymentMethod: paymentIntent.payment_method } },
@@ -294,89 +269,75 @@ const confirmOrder = async (req, res, next) => {
       .populate("event", "title startDate location")
       .populate("user", "firstName lastName email");
 
-    if (!order) {
-      // Webhook already fulfilled this order — tell the client it's done
-      return res.status(400).json({ message: "Order is already completed." });
-    }
+    if (!order) return res.status(400).json({ message: "Order is already completed." });
 
-    const payment = new Payment({
+    await Payment.create({
       order: order._id,
       stripePaymentIntentId: paymentIntent.id,
       amount: order.totalAmount,
       status: "succeeded",
       paymentMethod: paymentIntent.payment_method,
     });
-    await payment.save();
 
-    const tickets = [];
-    let totalTicketsSold = 0;
-    let grossRevenue = 0;
-    for (const item of order.items) {
-      // NOTE: sold count is pre-reserved in createOrder (C-3) — do NOT increment here
-      totalTicketsSold += item.quantity;
-      grossRevenue += (item.price || 0) * item.quantity;
-
-      for (let i = 0; i < item.quantity; i++) {
-        const ticket = new Ticket({
-          order: order._id,
-          event: order.event._id || order.event,
-          ticketType: item.ticketType._id,
-          holder: order.user._id || order.user,
-        });
-
-        await ticket.save();
-
-        const qrData = generateTicketQRData(ticket);
-        const qrCode = await generateQRCode(qrData);
-        ticket.qrCode = qrCode;
-        await ticket.save();
-
-        tickets.push(ticket);
-      }
-    }
-
-    // ── Update Event soldTickets + totalSales ───────────────────────────────
-    await Event.findByIdAndUpdate(order.event._id || order.event, {
-      $inc: { soldTickets: totalTicketsSold, totalSales: grossRevenue },
-    });
-
-    // ── Attribute revenue to tracking link ──────────────────────────────────
-    if (order.trackingLink) {
-      await TrackingLink.findByIdAndUpdate(order.trackingLink, {
-        $inc: { orders: 1, revenue: grossRevenue },
-      });
-    }
-
-    // ── Send order confirmation email + in-app notification ─────────────────
-    try {
-      const { subject, html } = orderConfirmationEmailTemplate({
-        firstName: order.user.firstName,
-        orderNumber: order.orderNumber,
-        eventTitle: order.event.title,
-        eventDate: order.event.startDate,
-        eventLocation: order.event.location,
-        items: order.items,
-        totalAmount: order.totalAmount,
-        ticketCount: tickets.length,
-      });
-      await notify({
-        userId: order.user._id || order.user,
-        type: 'order_confirmed',
-        title: 'Booking confirmed!',
-        message: `Your ${tickets.length} ticket(s) for "${order.event.title}" are confirmed. Order #${order.orderNumber}.`,
-        link: '/user/tickets',
-        email: { to: order.user.email, subject, html },
-      });
-    } catch (emailErr) {
-      logger.error('Order confirmation notification failed:', emailErr.message);
-    }
+    const tickets = await fulfillOrder(order);
 
     res.json({
       message: "Order confirmed successfully",
       orderId: order._id,
       paymentIntentId: paymentIntent.id,
       paymentStatus: paymentIntent.status,
-      orderStatus: order.status,
+      orderStatus: "completed",
+      order,
+      tickets,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const confirmMomoOrder = async (req, res, next) => {
+  try {
+    const { id: orderId } = req.params;
+    const { momoPhone } = req.body;
+
+    if (!momoPhone?.trim()) {
+      return res.status(400).json({ message: "MTN Mobile Money phone number is required." });
+    }
+
+    const orderCheck = await Order.findById(orderId).select("user status");
+    if (!orderCheck) return res.status(404).json({ message: "Order not found." });
+    if (orderCheck.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Not authorized." });
+    }
+    if (orderCheck.status !== "pending") {
+      if (orderCheck.status === "completed") return res.status(400).json({ message: "Order is already completed." });
+      return res.status(400).json({ message: `Order is ${orderCheck.status} and cannot be confirmed.` });
+    }
+
+    const order = await Order.findOneAndUpdate(
+      { _id: orderId, status: "pending" },
+      { $set: { status: "completed", paymentGateway: "momo", paymentMethod: `momo:${momoPhone.trim()}` } },
+      { new: false },
+    )
+      .populate("items.ticketType", "name price")
+      .populate("event", "title startDate location")
+      .populate("user", "firstName lastName email");
+
+    if (!order) return res.status(400).json({ message: "Order is already completed." });
+
+    await Payment.create({
+      order: order._id,
+      amount: order.totalAmount,
+      status: "succeeded",
+      paymentMethod: `momo:${momoPhone.trim()}`,
+    });
+
+    const tickets = await fulfillOrder(order);
+
+    res.json({
+      message: "MoMo payment confirmed and tickets issued.",
+      orderId: order._id,
+      orderStatus: "completed",
       order,
       tickets,
     });
@@ -418,9 +379,7 @@ const getOrderById = async (req, res, next) => {
       .populate("items.ticketType", "name price benefits")
       .populate("user", "firstName lastName email");
 
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
+    if (!order) return res.status(404).json({ message: "Order not found" });
 
     if (
       order.user._id.toString() !== req.user._id.toString() &&
@@ -430,120 +389,92 @@ const getOrderById = async (req, res, next) => {
     }
 
     const tickets = await Ticket.find({ order: order._id });
-
     res.json({ order, tickets });
   } catch (error) {
     next(error);
   }
 };
 
-// ─── PATCH /api/orders/:id/cancel ────────────────────────────────────────────
-// Attendee cancels a pending order
 const cancelOrder = async (req, res, next) => {
   try {
     const order = await Order.findById(req.params.id);
-
-    if (!order) {
-      return res.status(404).json({ message: "Order not found." });
-    }
-
+    if (!order) return res.status(404).json({ message: "Order not found." });
     if (order.user.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Not authorized." });
     }
-
     if (order.status === "completed") {
-      return res.status(400).json({
-        message:
-          "Completed orders cannot be cancelled. Please request a refund.",
-      });
+      return res.status(400).json({ message: "Completed orders cannot be cancelled. Please request a refund." });
     }
-
     if (order.status === "cancelled") {
       return res.status(400).json({ message: "Order is already cancelled." });
     }
 
-    // Cancel PaymentIntent on Stripe
     if (order.paymentIntentId) {
       try {
         await stripe.paymentIntents.cancel(order.paymentIntentId);
       } catch (stripeErr) {
-        if (stripeErr.code !== "payment_intent_unexpected_state")
-          throw stripeErr;
+        if (stripeErr.code !== "payment_intent_unexpected_state") throw stripeErr;
       }
     }
 
-    // Release inventory back to ticket types
     for (const item of order.items) {
-      await TicketType.findByIdAndUpdate(item.ticketType, {
-        $inc: { sold: -item.quantity },
-      });
+      await TicketType.findByIdAndUpdate(item.ticketType, { $inc: { sold: -item.quantity } });
     }
 
     order.status = "cancelled";
     await order.save();
 
-    res.json({
-      message: "Order cancelled successfully.",
-      orderId: order._id,
-    });
+    res.json({ message: "Order cancelled successfully.", orderId: order._id });
   } catch (error) {
     next(error);
   }
 };
 
-// ─── POST /api/orders/:id/refund ────────────────────────────────────────────
-// Attendee requests a refund on a completed order
 const requestRefund = async (req, res, next) => {
   try {
     const { reason } = req.body;
     if (!reason?.trim()) {
-      return res.status(400).json({ message: 'A reason is required to request a refund.' });
+      return res.status(400).json({ message: "A reason is required to request a refund." });
     }
 
     const order = await Order.findById(req.params.id);
-    if (!order) return res.status(404).json({ message: 'Order not found.' });
+    if (!order) return res.status(404).json({ message: "Order not found." });
     if (order.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Not authorized.' });
+      return res.status(403).json({ message: "Not authorized." });
     }
-    if (order.status !== 'completed') {
-      return res.status(400).json({ message: 'Only completed orders can be refunded.' });
+    if (order.status !== "completed") {
+      return res.status(400).json({ message: "Only completed orders can be refunded." });
     }
-    if (order.refundStatus && order.refundStatus !== 'none') {
+    if (order.refundStatus && order.refundStatus !== "none") {
       return res.status(400).json({ message: `Refund already ${order.refundStatus}.` });
     }
 
-    // Issue Stripe refund
     let refundRecord = null;
     if (order.paymentIntentId) {
       try {
         refundRecord = await stripe.refunds.create({
           payment_intent: order.paymentIntentId,
-          reason: 'requested_by_customer',
+          reason: "requested_by_customer",
           metadata: { orderId: order._id.toString(), reason: reason.trim() },
         });
       } catch (stripeErr) {
-        return res.status(402).json({ message: 'Refund failed: ' + stripeErr.message });
+        return res.status(402).json({ message: "Refund failed: " + stripeErr.message });
       }
     }
 
-    order.status = 'refunded';
-    order.refundStatus = 'approved';
+    order.status = "refunded";
+    order.refundStatus = "approved";
     order.refundReason = reason.trim();
     await order.save();
 
-    // Restore inventory
     for (const item of order.items) {
       await TicketType.findByIdAndUpdate(item.ticketType, { $inc: { sold: -item.quantity } });
     }
 
-    res.json({
-      message: 'Refund processed successfully.',
-      orderId: order._id,
-      refundId: refundRecord?.id,
-    });
+    res.json({ message: "Refund processed successfully.", orderId: order._id, refundId: refundRecord?.id });
   } catch (error) {
     next(error);
   }
 };
 
-export { createOrder, confirmOrder, getMyOrders, getOrderById, cancelOrder, requestRefund };
+export { createOrder, confirmOrder, confirmMomoOrder, getMyOrders, getOrderById, cancelOrder, requestRefund };
