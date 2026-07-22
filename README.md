@@ -9,7 +9,7 @@ A production-ready Eventbrite-like event management and ticketing web applicatio
 - Secure payment processing with Stripe
 - Role-based access control (attendee, organizer, admin)
 - QR code ticket generation
-- Real-time analytics dashboard
+- Real-time analytics dashboard or dashboards. 
 
 ## Tech Stack
 
