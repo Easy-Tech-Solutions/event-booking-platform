@@ -282,7 +282,7 @@ const confirmOrder = async (req, res, next) => {
     // H-5: Atomic claim — exactly one of confirmOrder and the webhook wins
     const order = await Order.findOneAndUpdate(
       { _id: orderId, status: "pending" },
-      { $set: { status: "completed", paymentMethod: paymentIntent.payment_method } },
+      { $set: { status: "completed", paymentMethod: retrievedPmId } },
       { new: false },
     )
       .populate("items.ticketType")
