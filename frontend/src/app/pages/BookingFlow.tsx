@@ -60,15 +60,20 @@ function PaymentForm({ total, billingName, billingEmail, clientSecret, currentOr
       },
     });
 
-    if (error) {
+    // If Stripe returns an error but the underlying PaymentIntent is already
+    // in 'succeeded' state (user clicked twice after a cold-start timeout),
+    // treat it as success and let the idempotent confirmOrder handle it.
+    const resolvedIntent = paymentIntent ?? (error as any)?.payment_intent;
+
+    if (error && resolvedIntent?.status !== 'succeeded') {
       setPaymentError(error.message || 'Payment failed. Please try again.');
       setIsProcessing(false);
       return;
     }
 
-    if (paymentIntent?.status === 'succeeded') {
-      const pm = paymentIntent.payment_method;
-      const paymentMethodId = typeof pm === 'string' ? pm : pm?.id ?? '';
+    if (resolvedIntent?.status === 'succeeded') {
+      const pm = resolvedIntent.payment_method;
+      const paymentMethodId = typeof pm === 'string' ? pm : (pm as any)?.id ?? '';
 
       // Attempt confirmOrder; if it fails (timeout / webhook race), poll the order
       // status up to 5 times before giving up — payment already succeeded so the

@@ -116,7 +116,7 @@ const ordersSlice = createSlice({
         state.clientSecret = null;
       })
       .addCase(confirmMomoOrder.rejected, (state, action) => { state.isLoading = false; state.error = action.payload as string; })
-      .addCase(fetchMyOrders.pending, (state) => { state.isLoading = true; })
+      .addCase(fetchMyOrders.pending, (state) => { state.isLoading = true; state.error = null; })
       .addCase(fetchMyOrders.fulfilled, (state, action) => {
         state.isLoading = false;
         state.orders = action.payload.orders;
