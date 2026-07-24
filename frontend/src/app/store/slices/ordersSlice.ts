@@ -1,11 +1,14 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { ordersAPI, CreateOrderPayload, ConfirmOrderPayload, ConfirmMomoPayload } from '../../api/orders';
+import apiClient from '../../api/client';
 
 interface OrdersState {
   orders: any[];
   currentOrder: any | null;
   clientSecret: string | null;
   tickets: any[];
+  myTickets: any[];
+  myTicketsLoading: boolean;
   isLoading: boolean;
   error: string | null;
   pagination: { currentPage: number; totalPages: number; total: number };
@@ -16,6 +19,8 @@ const initialState: OrdersState = {
   currentOrder: null,
   clientSecret: null,
   tickets: [],
+  myTickets: [],
+  myTicketsLoading: false,
   isLoading: false,
   error: null,
   pagination: { currentPage: 1, totalPages: 1, total: 0 },
@@ -54,6 +59,15 @@ export const fetchMyOrders = createAsyncThunk('orders/fetchMyOrders', async (par
     return response.data;
   } catch (error: any) {
     return rejectWithValue(error.response?.data?.message || 'Failed to fetch orders');
+  }
+});
+
+export const fetchMyTickets = createAsyncThunk('orders/fetchMyTickets', async (_, { rejectWithValue }) => {
+  try {
+    const response = await apiClient.get('/tickets/my-tickets', { params: { limit: 50 } });
+    return response.data;
+  } catch (error: any) {
+    return rejectWithValue(error.response?.data?.message || 'Failed to fetch tickets');
   }
 });
 
@@ -109,6 +123,12 @@ const ordersSlice = createSlice({
         state.pagination = { currentPage: action.payload.currentPage, totalPages: action.payload.totalPages, total: action.payload.total };
       })
       .addCase(fetchMyOrders.rejected, (state, action) => { state.isLoading = false; state.error = action.payload as string; })
+      .addCase(fetchMyTickets.pending, (state) => { state.myTicketsLoading = true; })
+      .addCase(fetchMyTickets.fulfilled, (state, action) => {
+        state.myTicketsLoading = false;
+        state.myTickets = action.payload.tickets;
+      })
+      .addCase(fetchMyTickets.rejected, (state) => { state.myTicketsLoading = false; })
       .addCase(fetchOrderById.fulfilled, (state, action) => {
         state.currentOrder = action.payload.order;
         state.tickets = action.payload.tickets;
