@@ -110,8 +110,11 @@ function MyTickets() {
   if (isLoading) return <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-[#004406] border-t-transparent rounded-full animate-spin" /></div>;
   if (error) return <div className="text-center py-12 text-destructive">{error}</div>;
 
-  const upcoming = orders.filter((o: any) => o.status === 'completed' && new Date(o.event?.startDate) >= new Date());
-  const past = orders.filter((o: any) => o.status === 'completed' && new Date(o.event?.startDate) < new Date());
+  const now = new Date();
+  const isValidDate = (d: any) => d && !isNaN(new Date(d).getTime());
+  const completed = orders.filter((o: any) => o.status === 'completed');
+  const upcoming = completed.filter((o: any) => !isValidDate(o.event?.startDate) || new Date(o.event.startDate) >= now);
+  const past = completed.filter((o: any) => isValidDate(o.event?.startDate) && new Date(o.event.startDate) < now);
 
   // Group tickets by orderId for quick lookup
   const ticketsByOrder = myTickets.reduce((acc: Record<string, any[]>, t: any) => {
@@ -122,109 +125,122 @@ function MyTickets() {
     return acc;
   }, {});
 
+  const renderOrderCard = (order: any, isUpcoming: boolean) => {
+    const orderTickets: any[] = ticketsByOrder[order._id] ?? [];
+    return (
+      <Card key={order._id} className="p-6">
+        <div className="flex flex-col md:flex-row gap-6">
+          <div className="flex-1">
+            <div className="flex items-start justify-between mb-2">
+              <div>
+                <h3 className="font-semibold text-lg mb-1">{order.event?.title ?? 'Event'}</h3>
+                <Badge className="bg-[#004406] text-white">{actionMsg[order._id] ? 'Action Taken' : 'Confirmed'}</Badge>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setExpandedOrder(expandedOrder === order._id ? null : order._id)}>
+                <QrCode className="w-4 h-4 mr-2" />{expandedOrder === order._id ? 'Hide' : 'Show'} Tickets
+              </Button>
+            </div>
+            <div className="space-y-2 text-sm text-muted-foreground mt-4">
+              {isValidDate(order.event?.startDate) && <div className="flex items-center gap-2"><Calendar className="w-4 h-4" /><span>{formatDate(order.event.startDate)}</span></div>}
+              {order.event?.location?.venue && <div className="flex items-center gap-2"><MapPin className="w-4 h-4" /><span>{order.event.location.venue}</span></div>}
+              <div className="flex items-center gap-2"><Ticket className="w-4 h-4" />
+                {order.items?.map((item: any, i: number) => (
+                  item?.ticketType ? <span key={i}>{item.quantity}x {item.ticketType.name}</span> : null
+                ))}
+              </div>
+            </div>
+            <div className="mt-4 pt-4 border-t flex justify-between items-center">
+              <div><span className="text-sm text-muted-foreground">Total Paid</span><span className="ml-2 font-semibold text-lg">${order.totalAmount?.toFixed(2)}</span></div>
+              <div className="text-xs text-muted-foreground">{order.orderNumber}</div>
+            </div>
+
+            {expandedOrder === order._id && (
+              <div className="mt-4 pt-4 border-t">
+                {myTicketsLoading ? (
+                  <div className="flex justify-center py-4"><div className="w-6 h-6 border-4 border-[#004406] border-t-transparent rounded-full animate-spin" /></div>
+                ) : orderTickets.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {orderTickets.map((ticket: any) => (
+                      <div key={ticket._id} className="border rounded-lg p-4 flex flex-col items-center gap-2 bg-gray-50">
+                        <div className="text-xs font-medium text-muted-foreground">{ticket.ticketType?.name}</div>
+                        {ticket.qrCode ? (
+                          <img src={ticket.qrCode} alt={`QR code for ${ticket.ticketNumber}`} className="w-36 h-36" />
+                        ) : (
+                          <TicketQRCode ticketId={ticket.ticketNumber} />
+                        )}
+                        <div className="text-xs font-mono text-muted-foreground">{ticket.ticketNumber}</div>
+                        <Badge variant="outline" className="text-xs capitalize">{ticket.status}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-2">No tickets found for this order.</p>
+                )}
+              </div>
+            )}
+
+            {!actionMsg[order._id] && isUpcoming && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {transferOrderId === order._id ? (
+                  <div className="flex items-center gap-2">
+                    <Input type="email" placeholder="Recipient email" value={transferEmail} onChange={(e) => setTransferEmail(e.target.value)} className="w-48" />
+                    <Button size="sm" className="bg-[#004406] text-white" disabled={!transferEmail} onClick={() => handleTransfer(order._id)}>Transfer</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setTransferOrderId(null)}>Cancel</Button>
+                  </div>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => setTransferOrderId(order._id)}>Transfer Ticket</Button>
+                )}
+                {refundOrderId === order._id ? (
+                  <div className="flex items-center gap-2">
+                    <Input placeholder="Reason for refund" value={refundReason} onChange={(e) => setRefundReason(e.target.value)} className="w-48" />
+                    <Button size="sm" className="bg-[#004406] text-white" disabled={!refundReason} onClick={() => handleRefund(order._id)}>Submit</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setRefundOrderId(null)}>Cancel</Button>
+                  </div>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => setRefundOrderId(order._id)}>Request Refund</Button>
+                )}
+              </div>
+            )}
+            {actionMsg[order._id] && <div className="mt-4 text-sm text-[#004406] font-medium">{actionMsg[order._id]}</div>}
+          </div>
+        </div>
+      </Card>
+    );
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div><h2 className="text-2xl font-bold">My Tickets</h2><p className="text-muted-foreground">View and manage your event tickets</p></div>
       </div>
-      <Tabs defaultValue="upcoming">
-        <TabsList>
-          <TabsTrigger value="upcoming">Upcoming ({upcoming.length})</TabsTrigger>
-          <TabsTrigger value="past">Past Events ({past.length})</TabsTrigger>
-        </TabsList>
-        {[{ value: 'upcoming', list: upcoming }, { value: 'past', list: past }].map(({ value, list }) => (
-          <TabsContent key={value} value={value} className="mt-6">
-            {list.length === 0 ? (
-              <div className="text-center py-12"><Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-4" /><h3 className="font-semibold mb-2">No {value} events</h3></div>
+      {completed.length === 0 ? (
+        <div className="text-center py-12">
+          <Ticket className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <h3 className="font-semibold mb-2">No tickets yet</h3>
+          <p className="text-sm text-muted-foreground">Your confirmed tickets will appear here after booking.</p>
+        </div>
+      ) : (
+        <Tabs defaultValue="upcoming">
+          <TabsList>
+            <TabsTrigger value="upcoming">Upcoming ({upcoming.length})</TabsTrigger>
+            <TabsTrigger value="past">Past Events ({past.length})</TabsTrigger>
+          </TabsList>
+          <TabsContent value="upcoming" className="mt-6">
+            {upcoming.length === 0 ? (
+              <div className="text-center py-12"><Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-4" /><h3 className="font-semibold mb-2">No upcoming events</h3></div>
             ) : (
-              <div className="space-y-4">
-                {list.map((order: any) => {
-                  const orderTickets: any[] = ticketsByOrder[order._id] ?? [];
-                  return (
-                    <Card key={order._id} className="p-6">
-                      <div className="flex flex-col md:flex-row gap-6">
-                        <div className="flex-1">
-                          <div className="flex items-start justify-between mb-2">
-                            <div>
-                              <h3 className="font-semibold text-lg mb-1">{order.event?.title}</h3>
-                              <Badge className="bg-[#004406] text-white">{actionMsg[order._id] ? 'Action Taken' : 'Confirmed'}</Badge>
-                            </div>
-                            <Button variant="outline" size="sm" onClick={() => setExpandedOrder(expandedOrder === order._id ? null : order._id)}>
-                              <QrCode className="w-4 h-4 mr-2" />{expandedOrder === order._id ? 'Hide' : 'Show'} Tickets
-                            </Button>
-                          </div>
-                          <div className="space-y-2 text-sm text-muted-foreground mt-4">
-                            {order.event?.startDate && <div className="flex items-center gap-2"><Calendar className="w-4 h-4" /><span>{formatDate(order.event.startDate)}</span></div>}
-                            {order.event?.location?.venue && <div className="flex items-center gap-2"><MapPin className="w-4 h-4" /><span>{order.event.location.venue}</span></div>}
-                            <div className="flex items-center gap-2"><Ticket className="w-4 h-4" />
-                              {order.items?.map((item: any, i: number) => (
-                                item?.ticketType ? <span key={i}>{item.quantity}x {item.ticketType.name}</span> : null
-                              ))}
-                            </div>
-                          </div>
-                          <div className="mt-4 pt-4 border-t flex justify-between items-center">
-                            <div><span className="text-sm text-muted-foreground">Total Paid</span><span className="ml-2 font-semibold text-lg">${order.totalAmount?.toFixed(2)}</span></div>
-                            <div className="text-xs text-muted-foreground">{order.orderNumber}</div>
-                          </div>
-
-                          {expandedOrder === order._id && (
-                            <div className="mt-4 pt-4 border-t">
-                              {myTicketsLoading ? (
-                                <div className="flex justify-center py-4"><div className="w-6 h-6 border-4 border-[#004406] border-t-transparent rounded-full animate-spin" /></div>
-                              ) : orderTickets.length > 0 ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                  {orderTickets.map((ticket: any) => (
-                                    <div key={ticket._id} className="border rounded-lg p-4 flex flex-col items-center gap-2 bg-gray-50">
-                                      <div className="text-xs font-medium text-muted-foreground">{ticket.ticketType?.name}</div>
-                                      {ticket.qrCode ? (
-                                        <img src={ticket.qrCode} alt={`QR code for ${ticket.ticketNumber}`} className="w-36 h-36" />
-                                      ) : (
-                                        <TicketQRCode ticketId={ticket.ticketNumber} />
-                                      )}
-                                      <div className="text-xs font-mono text-muted-foreground">{ticket.ticketNumber}</div>
-                                      <Badge variant="outline" className="text-xs capitalize">{ticket.status}</Badge>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="text-sm text-muted-foreground text-center py-2">No tickets found for this order.</p>
-                              )}
-                            </div>
-                          )}
-
-                          {!actionMsg[order._id] && value === 'upcoming' && (
-                            <div className="mt-4 flex flex-wrap gap-2">
-                              {transferOrderId === order._id ? (
-                                <div className="flex items-center gap-2">
-                                  <Input type="email" placeholder="Recipient email" value={transferEmail} onChange={(e) => setTransferEmail(e.target.value)} className="w-48" />
-                                  <Button size="sm" className="bg-[#004406] text-white" disabled={!transferEmail} onClick={() => handleTransfer(order._id)}>Transfer</Button>
-                                  <Button size="sm" variant="ghost" onClick={() => setTransferOrderId(null)}>Cancel</Button>
-                                </div>
-                              ) : (
-                                <Button size="sm" variant="outline" onClick={() => setTransferOrderId(order._id)}>Transfer Ticket</Button>
-                              )}
-                              {refundOrderId === order._id ? (
-                                <div className="flex items-center gap-2">
-                                  <Input placeholder="Reason for refund" value={refundReason} onChange={(e) => setRefundReason(e.target.value)} className="w-48" />
-                                  <Button size="sm" className="bg-[#004406] text-white" disabled={!refundReason} onClick={() => handleRefund(order._id)}>Submit</Button>
-                                  <Button size="sm" variant="ghost" onClick={() => setRefundOrderId(null)}>Cancel</Button>
-                                </div>
-                              ) : (
-                                <Button size="sm" variant="outline" onClick={() => setRefundOrderId(order._id)}>Request Refund</Button>
-                              )}
-                            </div>
-                          )}
-                          {actionMsg[order._id] && <div className="mt-4 text-sm text-[#004406] font-medium">{actionMsg[order._id]}</div>}
-                        </div>
-                      </div>
-                    </Card>
-                  );
-                })}
-              </div>
+              <div className="space-y-4">{upcoming.map((o: any) => renderOrderCard(o, true))}</div>
             )}
           </TabsContent>
-        ))}
-      </Tabs>
+          <TabsContent value="past" className="mt-6">
+            {past.length === 0 ? (
+              <div className="text-center py-12"><Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-4" /><h3 className="font-semibold mb-2">No past events</h3></div>
+            ) : (
+              <div className="space-y-4">{past.map((o: any) => renderOrderCard(o, false))}</div>
+            )}
+          </TabsContent>
+        </Tabs>
+      )}
     </div>
   );
 }
