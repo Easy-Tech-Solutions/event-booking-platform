@@ -125,6 +125,9 @@ export function Navbar() {
                       <Link to="/user/profile" className="px-4 py-2 hover:bg-[#004406]/10 rounded-lg flex items-center gap-2" onClick={() => setMobileMenuOpen(false)}>
                         <User className="w-4 h-4" />{user?.firstName} {user?.lastName}
                       </Link>
+                      <div className="px-1">
+                        <NotificationBell />
+                      </div>
                       <Button variant="outline" className="w-full" onClick={() => { handleLogout(); setMobileMenuOpen(false); }}>
                         <LogOut className="w-4 h-4 mr-2" />Sign Out
                       </Button>

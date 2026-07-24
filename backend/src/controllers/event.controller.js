@@ -7,6 +7,7 @@ import { validationResult } from "express-validator";
 import User from "../models/User.model.js";
 import { uploadEventImage } from "../config/cloudinary.js";
 import { sendEmail } from "../utils/sendEmail.js";
+import { notify } from "../utils/notify.js";
 
 const createEvent = async (req, res, next) => {
   try {
@@ -192,11 +193,50 @@ const updateEvent = async (req, res, next) => {
         .json({ message: "Not authorized to update this event" });
     }
 
+    const isCancelling = req.body.status === "cancelled" && event.status !== "cancelled";
+    const significantFields = ["title", "startDate", "endDate", "location"];
+    const hasSignificantChange = significantFields.some((f) => req.body[f] !== undefined);
+
     const updatedEvent = await Event.findByIdAndUpdate(
       req.params.id,
       req.body,
       { new: true, runValidators: true },
     ).populate("organizer", "firstName lastName");
+
+    // Notify ticket holders about cancellation or significant changes (fire-and-forget)
+    if (isCancelling || hasSignificantChange) {
+      const holderIds = await Ticket.find({ event: event._id }).distinct("holder");
+
+      if (holderIds.length > 0) {
+        // Fetch emails only when we need to send cancellation emails
+        const holders = isCancelling
+          ? await User.find({ _id: { $in: holderIds } }).select("email firstName")
+          : holderIds.map((id) => ({ _id: id }));
+
+        const notifs = holders.map((holder) =>
+          notify({
+            userId: holder._id.toString(),
+            type: isCancelling ? "event_cancelled" : "event_updated",
+            title: isCancelling ? "Event Cancelled" : "Event Updated",
+            message: isCancelling
+              ? `"${event.title}" has been cancelled. Contact the organiser for refund information.`
+              : `"${event.title}" has been updated. Check the event page for the latest details.`,
+            link: isCancelling ? "/user/tickets" : `/event/${event._id}`,
+            ...(isCancelling && holder.email
+              ? {
+                  email: {
+                    to: holder.email,
+                    subject: `Event Cancelled — ${event.title}`,
+                    html: `<h2>Hi ${holder.firstName || "there"},</h2><p>Unfortunately, <strong>${event.title}</strong> has been cancelled by the organiser.</p><p>Please contact support if you need a refund. We're sorry for the inconvenience.</p>`,
+                  },
+                }
+              : {}),
+          })
+        );
+        Promise.all(notifs).catch(() => {});
+      }
+    }
+
     res.json({ message: "Event updated successfully", event: updatedEvent });
   } catch (error) {
     next(error);
@@ -568,7 +608,16 @@ const blastEventMessage = async (req, res, next) => {
     `;
 
     await Promise.all(
-      attendees.map((attendee) => sendEmail(attendee.email, emailSubject, html)),
+      attendees.map((attendee) =>
+        notify({
+          userId: attendee._id.toString(),
+          type: "blast_message",
+          title: emailSubject,
+          message: message.trim(),
+          link: `/event/${event._id}`,
+          email: { to: attendee.email, subject: emailSubject, html },
+        })
+      ),
     );
 
     return res.json({

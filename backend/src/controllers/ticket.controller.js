@@ -1,6 +1,7 @@
 import Ticket from "../models/Ticket.model.js";
 import CheckIn from "../models/CheckIn.model.js";
 import Event from "../models/Event.model.js";
+import { notify } from "../utils/notify.js";
 
 const checkInTicket = async (req, res, next) => {
   try {
@@ -74,6 +75,14 @@ const checkInTicket = async (req, res, next) => {
         userAgent: req.headers["user-agent"] || "unknown",
         ip: req.ip,
       },
+    });
+
+    notify({
+      userId: ticket.holder._id.toString(),
+      type: 'check_in',
+      title: 'You\'re checked in!',
+      message: `Your ticket to "${ticket.event.title}" was scanned successfully. Enjoy the event!`,
+      link: '/user/tickets',
     });
 
     return res.json({
