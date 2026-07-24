@@ -220,7 +220,7 @@ function MyTickets() {
           <p className="text-sm text-muted-foreground">Your confirmed tickets will appear here after booking.</p>
         </div>
       ) : (
-        <Tabs defaultValue="upcoming">
+        <Tabs defaultValue={upcoming.length > 0 ? "upcoming" : "past"}>
           <TabsList>
             <TabsTrigger value="upcoming">Upcoming ({upcoming.length})</TabsTrigger>
             <TabsTrigger value="past">Past Events ({past.length})</TabsTrigger>
