@@ -67,8 +67,10 @@ function PaymentForm({ total, billingName, billingEmail, clientSecret, currentOr
     }
 
     if (paymentIntent?.status === 'succeeded') {
+      const pm = paymentIntent.payment_method;
+      const paymentMethodId = typeof pm === 'string' ? pm : pm?.id ?? '';
       const result = await dispatch(
-        confirmOrder({ orderId: currentOrderId, paymentMethodId: paymentIntent.payment_method as string }),
+        confirmOrder({ orderId: currentOrderId, paymentMethodId }),
       );
       if (confirmOrder.fulfilled.match(result)) {
         onSuccess();

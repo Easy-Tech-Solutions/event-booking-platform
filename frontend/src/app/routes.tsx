@@ -1,9 +1,4 @@
 import { createBrowserRouter } from 'react-router';
-import { Elements } from '@stripe/react-stripe-js';
-import { loadStripe } from '@stripe/stripe-js';
-
-const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
-const stripePromise = stripeKey ? loadStripe(stripeKey) : null;
 import { LandingPage } from './pages/LandingPage';
 import { EventDiscovery } from './pages/EventDiscovery';
 import { EventDetails } from './pages/EventDetails';
@@ -40,22 +35,7 @@ export const router = createBrowserRouter([
   { path: '/forgot-password', Component: ForgotPassword },
   {
     path: '/book/:id',
-    element: (
-      <ProtectedRoute>
-        {stripePromise ? (
-          <Elements stripe={stripePromise}>
-            <BookingFlow />
-          </Elements>
-        ) : (
-          <div className="min-h-screen flex items-center justify-center text-center p-8">
-            <div>
-              <h2 className="text-xl font-semibold mb-2">Stripe not configured</h2>
-              <p className="text-muted-foreground">The <code>VITE_STRIPE_PUBLISHABLE_KEY</code> environment variable is missing. Add it to your Vercel project settings or local .env file.</p>
-            </div>
-          </div>
-        )}
-      </ProtectedRoute>
-    ),
+    element: <ProtectedRoute><BookingFlow /></ProtectedRoute>,
   },
   {
     path: '/live/:sessionId',

@@ -244,7 +244,24 @@ const confirmOrder = async (req, res, next) => {
       return res.status(403).json({ message: "Not authorized" });
     }
     if (orderCheck.status !== "pending") {
-      if (orderCheck.status === "completed") return res.status(400).json({ message: "Order is already completed." });
+      if (orderCheck.status === "completed") {
+        // Webhook may have already fulfilled this order — return completed state so the frontend
+        // can proceed to the confirmation screen rather than showing an error.
+        const [completedOrder, existingTickets] = await Promise.all([
+          Order.findById(orderId)
+            .populate("items.ticketType")
+            .populate("event", "title startDate location")
+            .populate("user", "firstName lastName email"),
+          Ticket.find({ order: orderId }),
+        ]);
+        return res.json({
+          message: "Order confirmed successfully",
+          orderId: completedOrder._id,
+          orderStatus: "completed",
+          order: completedOrder,
+          tickets: existingTickets,
+        });
+      }
       return res.status(400).json({ message: `Order is ${orderCheck.status} and cannot be confirmed.` });
     }
     if (!orderCheck.paymentIntentId) {
@@ -269,7 +286,23 @@ const confirmOrder = async (req, res, next) => {
       .populate("event", "title startDate location")
       .populate("user", "firstName lastName email");
 
-    if (!order) return res.status(400).json({ message: "Order is already completed." });
+    if (!order) {
+      // Webhook won the race — return the already-fulfilled order so the frontend can proceed.
+      const [completedOrder, existingTickets] = await Promise.all([
+        Order.findById(orderId)
+          .populate("items.ticketType")
+          .populate("event", "title startDate location")
+          .populate("user", "firstName lastName email"),
+        Ticket.find({ order: orderId }),
+      ]);
+      return res.json({
+        message: "Order confirmed successfully",
+        orderId: completedOrder._id,
+        orderStatus: "completed",
+        order: completedOrder,
+        tickets: existingTickets,
+      });
+    }
 
     await Payment.create({
       order: order._id,
