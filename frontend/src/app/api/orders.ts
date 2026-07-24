@@ -47,7 +47,7 @@ export interface ConfirmMomoPayload {
 
 export const ordersAPI = {
   createOrder: (data: CreateOrderPayload) => apiClient.post('/orders', data),
-  confirmOrder: (data: ConfirmOrderPayload) => apiClient.post('/orders/confirm', data),
+  confirmOrder: (data: ConfirmOrderPayload) => apiClient.post('/orders/confirm', data, { timeout: 40000 }),
   confirmMomoOrder: (data: ConfirmMomoPayload) => apiClient.post(`/orders/${data.orderId}/confirm-momo`, { momoPhone: data.momoPhone }),
   getMyOrders: (params?: { page?: number; limit?: number }) => apiClient.get('/orders', { params }),
   getOrderById: (id: string) => apiClient.get(`/orders/${id}`),

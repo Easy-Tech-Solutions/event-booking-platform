@@ -15,7 +15,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { useAppDispatch, useAppSelector } from '../store';
 import { fetchEventById } from '../store/slices/eventsSlice';
-import { createOrder, confirmOrder, confirmMomoOrder, clearCurrentOrder } from '../store/slices/ordersSlice';
+import { createOrder, confirmOrder, confirmMomoOrder, clearCurrentOrder, fetchOrderById } from '../store/slices/ordersSlice';
 import { TicketQRCode } from '../components/TicketQRCode';
 
 // ---------------------------------------------------------------------------
@@ -69,13 +69,33 @@ function PaymentForm({ total, billingName, billingEmail, clientSecret, currentOr
     if (paymentIntent?.status === 'succeeded') {
       const pm = paymentIntent.payment_method;
       const paymentMethodId = typeof pm === 'string' ? pm : pm?.id ?? '';
-      const result = await dispatch(
-        confirmOrder({ orderId: currentOrderId, paymentMethodId }),
-      );
+
+      // Attempt confirmOrder; if it fails (timeout / webhook race), poll the order
+      // status up to 5 times before giving up — payment already succeeded so the
+      // webhook will have fulfilled the order shortly.
+      let confirmed = false;
+      const result = await dispatch(confirmOrder({ orderId: currentOrderId, paymentMethodId }));
       if (confirmOrder.fulfilled.match(result)) {
+        confirmed = true;
+      } else {
+        // Poll for webhook fulfillment (handles Render cold-start timeouts)
+        for (let attempt = 0; attempt < 5; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          const pollResult = await dispatch(fetchOrderById(currentOrderId));
+          if (
+            fetchOrderById.fulfilled.match(pollResult) &&
+            pollResult.payload?.order?.status === 'completed'
+          ) {
+            confirmed = true;
+            break;
+          }
+        }
+      }
+
+      if (confirmed) {
         onSuccess();
       } else {
-        setPaymentError('Payment succeeded but order confirmation failed. Please contact support.');
+        setPaymentError('Payment succeeded but order confirmation is taking longer than expected. Please check My Tickets in a few minutes or contact support.');
       }
     }
 
