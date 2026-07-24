@@ -5,7 +5,8 @@ const ticketSchema = new mongoose.Schema(
     ticketNumber: {
       type: String,
       unique: true,
-      // required: true,
+      sparse: true,
+      required: true,
     },
     order: {
       type: mongoose.Schema.Types.ObjectId,
@@ -30,10 +31,14 @@ const ticketSchema = new mongoose.Schema(
     qrCode: String,
     status: {
       type: String,
-      enum: ["active", "used", "cancelled", "refunded"],
+      enum: ["active", "used", "cancelled", "refunded", "voided"],
       default: "active",
     },
     checkInTime: Date,
+    isVip: { type: Boolean, default: false },
+    isComp: { type: Boolean, default: false },
+    seatId: { type: String, default: null },   // e.g. "A-3" if reserved seating
+    timedEntrySlot: { type: String, default: null },
     transferHistory: [
       {
         from: {
@@ -55,6 +60,10 @@ const ticketSchema = new mongoose.Schema(
     timestamps: true,
   },
 );
+
+ticketSchema.index({ holder: 1 });
+ticketSchema.index({ event: 1 });
+ticketSchema.index({ order: 1 });
 
 ticketSchema.pre("save", function (next) {
   if (!this.ticketNumber) {

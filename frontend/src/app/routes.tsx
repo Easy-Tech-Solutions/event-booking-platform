@@ -20,12 +20,19 @@ import { VerifyEmail } from './pages/VerifyEmail';
 import { ResetPassword } from './pages/ResetPassword';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { CreateEventPage } from './pages/CreateEventPage';
+import { LiveEventRoom } from './pages/LiveEventRoom';
+import { BlogPage } from './pages/BlogPage';
+import { BlogPostPage } from './pages/BlogPostPage';
+import { ContactPage } from './pages/ContactPage';
 
 export const router = createBrowserRouter([
   { path: '/', Component: LandingPage },
   { path: '/discover', Component: EventDiscovery },
   { path: '/event/:id', Component: EventDetails },
   { path: '/help', Component: HelpCenter },
+  { path: '/contact', Component: ContactPage },
+  { path: '/blog', Component: BlogPage },
+  { path: '/blog/:slug', Component: BlogPostPage },
   { path: '/signin', Component: SignIn },
   { path: '/signup', Component: SignUp },
   { path: '/verify-email/:token', Component: VerifyEmail },
@@ -51,6 +58,10 @@ export const router = createBrowserRouter([
     ),
   },
   {
+    path: '/live/:sessionId',
+    element: <ProtectedRoute><LiveEventRoom /></ProtectedRoute>,
+  },
+  {
     path: '/user/*',
     element: <ProtectedRoute><UserDashboard /></ProtectedRoute>,
   },
@@ -72,6 +83,7 @@ export const router = createBrowserRouter([
     path: '/organizer',
     element: <ProtectedRoute requiredRole="organizer"><OrganizerDashboard /></ProtectedRoute>,
   },
+  // Admin and superadmin can access admin dashboard
   {
     path: '/admin/*',
     element: <ProtectedRoute requiredRole="admin"><AdminDashboard /></ProtectedRoute>,

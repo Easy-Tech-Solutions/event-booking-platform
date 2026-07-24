@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import { Navbar } from '../components/Navbar';
 import { Card } from '../components/ui/card';
@@ -9,7 +9,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
 import {
   Check, ChevronLeft, ChevronRight, Calendar, MapPin, Image as ImageIcon,
-  Ticket, Eye, Plus, Trash2, Globe, Users, Tag, X, CheckCircle, Upload,
+  Ticket, Eye, Plus, Trash2, Globe, Users, Tag, X, CheckCircle, Upload, Sparkles,
 } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../store';
 import { createEvent } from '../store/slices/eventsSlice';
@@ -40,6 +40,7 @@ interface EventDraft {
   state: string;
   country: string;
   onlineLink: string;
+  liveProvider: 'none' | 'custom' | 'zoom' | 'google_meet';
   description: string;
   coverImageUrl: string;
   tags: string[];
@@ -66,14 +67,6 @@ const STEPS = [
   { number: 5, title: 'Review', icon: Eye },
 ];
 
-const UNSPLASH_SUGGESTIONS = [
-  'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&q=80',
-  'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&q=80',
-  'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=800&q=80',
-  'https://images.unsplash.com/photo-1429962714451-bb934ecdc4ec?w=800&q=80',
-  'https://images.unsplash.com/photo-1513623935135-c896b59073c1?w=800&q=80',
-  'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80',
-];
 
 const DEFAULT_DRAFT: EventDraft = {
   title: '',
@@ -87,6 +80,7 @@ const DEFAULT_DRAFT: EventDraft = {
   state: '',
   country: 'US',
   onlineLink: '',
+  liveProvider: 'none',
   description: '',
   coverImageUrl: '',
   tags: [],
@@ -173,9 +167,9 @@ export function CreateEventPage() {
       if (createEvent.fulfilled.match(result)) {
         const eventId = result.payload.event?._id;
         if (eventId) {
-          // Create ticket types in parallel
-          await Promise.all(
-            draft.ticketTypes
+          await Promise.all([
+            // Create ticket types
+            ...draft.ticketTypes
               .filter((tt) => tt.name.trim() && parseInt(tt.quantity) >= 1)
               .map((tt) =>
                 apiClient.post('/ticket-types', {
@@ -185,8 +179,12 @@ export function CreateEventPage() {
                   quantity: parseInt(tt.quantity),
                   description: tt.description.trim() || undefined,
                 }).catch(() => {})
-              )
-          );
+              ),
+            // Create live session if a provider was selected
+            ...(draft.liveProvider !== 'none' && (draft.format === 'online' || draft.format === 'hybrid')
+              ? [apiClient.post('/live/sessions', { event: eventId, provider: draft.liveProvider }).catch(() => {})]
+              : []),
+          ]);
         }
         setSuccess(true);
         setTimeout(() => navigate('/organizer/events'), 2000);
@@ -226,6 +224,7 @@ export function CreateEventPage() {
         {/* Header */}
         <div className="mb-8">
           <button
+            type="button"
             onClick={() => navigate('/organizer/events')}
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors"
           >
@@ -314,6 +313,33 @@ function Step1Basics({ draft, set, categories, tagInput, setTagInput }: {
   tagInput: string;
   setTagInput: (v: string) => void;
 }) {
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiError, setAiError] = useState('');
+
+  const generateDescription = async () => {
+    setAiGenerating(true);
+    setAiError('');
+    try {
+      const res = await apiClient.post('/ai/generate', {
+        type: 'event_description',
+        context: {
+          title: draft.title,
+          category: draft.category,
+          format: draft.format,
+          city: draft.city,
+          startDate: draft.startDate,
+        },
+      });
+      if (res.data.generated) {
+        set('description', res.data.generated);
+      }
+    } catch {
+      setAiError('AI generation failed. Please try again or write your description manually.');
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+
   const addTag = () => {
     const t = tagInput.trim().toLowerCase();
     if (t && !draft.tags.includes(t) && draft.tags.length < 10) {
@@ -418,7 +444,7 @@ function Step1Basics({ draft, set, categories, tagInput, setTagInput }: {
             {draft.tags.map((t) => (
               <Badge key={t} variant="secondary" className="gap-1 py-1 px-3">
                 {t}
-                <button onClick={() => set('tags', draft.tags.filter((x) => x !== t))} className="ml-1 hover:text-destructive">
+                <button type="button" aria-label={`Remove tag ${t}`} onClick={() => set('tags', draft.tags.filter((x) => x !== t))} className="ml-1 hover:text-destructive">
                   <X className="w-3 h-3" />
                 </button>
               </Badge>
@@ -530,8 +556,8 @@ function Step2DateVenue({ draft, set }: { draft: EventDraft; set: <K extends key
       {/* Online Link */}
       {(isOnline || isHybrid) && (
         <Card className="p-6">
-          <h2 className="text-xl font-semibold mb-1">Online event link</h2>
-          <p className="text-sm text-muted-foreground mb-4">Provide the link where attendees will join your event.</p>
+          <h2 className="text-xl font-semibold mb-1">Online event link <span className="text-muted-foreground font-normal text-base">(optional)</span></h2>
+          <p className="text-sm text-muted-foreground mb-4">If not using a live provider below, paste your external link here.</p>
           <div className="flex items-center gap-2">
             <Globe className="w-5 h-5 text-muted-foreground shrink-0" />
             <Input
@@ -540,6 +566,45 @@ function Step2DateVenue({ draft, set }: { draft: EventDraft; set: <K extends key
               placeholder="https://zoom.us/j/..."
             />
           </div>
+        </Card>
+      )}
+
+      {/* Live Provider */}
+      {(isOnline || isHybrid) && (
+        <Card className="p-6">
+          <h2 className="text-xl font-semibold mb-1">Live video provider</h2>
+          <p className="text-sm text-muted-foreground mb-5">Choose how attendees will watch or participate in your event live.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {([
+              { value: 'none', emoji: '—', label: 'No live stream', desc: 'In-person or pre-recorded only' },
+              { value: 'custom', emoji: '🎥', label: 'EventHub Live', desc: 'Built-in video room (Daily.co)' },
+              { value: 'zoom', emoji: '💙', label: 'Zoom', desc: 'Requires linked Zoom account' },
+              { value: 'google_meet', emoji: '🟢', label: 'Google Meet', desc: 'Requires linked Google account' },
+            ] as const).map(({ value, emoji, label, desc }) => {
+              const selected = draft.liveProvider === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => set('liveProvider', value)}
+                  className={`flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all hover:border-[#004406]/50
+                    ${selected ? 'border-[#004406] bg-[#004406]/5' : 'border-gray-200 bg-white'}`}
+                >
+                  <span className="text-xl">{emoji}</span>
+                  <div>
+                    <div className={`font-medium text-sm ${selected ? 'text-[#004406]' : ''}`}>{label}</div>
+                    <div className="text-xs text-muted-foreground">{desc}</div>
+                  </div>
+                  {selected && <Check className="w-4 h-4 text-[#004406] ml-auto" />}
+                </button>
+              );
+            })}
+          </div>
+          {(draft.liveProvider === 'zoom' || draft.liveProvider === 'google_meet') && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-3 mt-4">
+              You must link your {draft.liveProvider === 'zoom' ? 'Zoom' : 'Google'} account in <a href="/user/profile" className="underline">Profile Settings → Connected Accounts</a> before the session can be created.
+            </p>
+          )}
         </Card>
       )}
     </div>
@@ -553,6 +618,29 @@ function Step3Details({ draft, set, tagInput, setTagInput }: {
   tagInput: string;
   setTagInput: (v: string) => void;
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError('');
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const res = await apiClient.post('/upload?folder=events', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      set('coverImageUrl', res.data.url);
+    } catch {
+      setUploadError('Upload failed. Check that Cloudinary is configured.');
+    } finally {
+      setUploading(false);
+    }
+  }, [set]);
+
   const addFaq = () => set('faqs', [...draft.faqs, { question: '', answer: '' }]);
   const updateFaq = (i: number, field: 'question' | 'answer', value: string) =>
     set('faqs', draft.faqs.map((f, idx) => idx === i ? { ...f, [field]: value } : f));
@@ -563,7 +651,20 @@ function Step3Details({ draft, set, tagInput, setTagInput }: {
     <div className="space-y-6">
       {/* Description */}
       <Card className="p-6">
-        <h2 className="text-xl font-semibold mb-1">Describe your event</h2>
+        <div className="flex items-start justify-between mb-1">
+          <h2 className="text-xl font-semibold">Describe your event</h2>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!draft.title.trim() || aiGenerating}
+            onClick={generateDescription}
+            className="flex items-center gap-1.5 text-purple-600 border-purple-200 hover:bg-purple-50 hover:border-purple-300"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            {aiGenerating ? 'Generating…' : 'Write with AI'}
+          </Button>
+        </div>
         <p className="text-sm text-muted-foreground mb-4">Tell potential attendees what to expect. Aim for at least 100 characters.</p>
         <Textarea
           value={draft.description}
@@ -572,68 +673,63 @@ function Step3Details({ draft, set, tagInput, setTagInput }: {
           rows={7}
           className="resize-none"
         />
-        <div className={`text-xs mt-1 text-right ${draft.description.length < 20 ? 'text-destructive' : 'text-muted-foreground'}`}>
-          {draft.description.length} chars {draft.description.length < 20 ? '(minimum 20)' : ''}
+        <div className="flex items-center justify-between mt-1">
+          {aiError ? (
+            <p className="text-xs text-destructive">{aiError}</p>
+          ) : <span />}
+          <span className={`text-xs ${draft.description.length < 20 ? 'text-destructive' : 'text-muted-foreground'}`}>
+            {draft.description.length} chars {draft.description.length < 20 ? '(minimum 20)' : ''}
+          </span>
         </div>
       </Card>
 
       {/* Cover Image */}
       <Card className="p-6">
         <h2 className="text-xl font-semibold mb-1">Cover image</h2>
-        <p className="text-sm text-muted-foreground mb-4">Add a banner image to make your event stand out. Paste a URL or pick a suggestion.</p>
+        <p className="text-sm text-muted-foreground mb-4">Upload a banner image to make your event stand out.</p>
 
-        {/* URL input */}
-        <div className="flex gap-2 mb-4">
-          <div className="relative flex-1">
-            <Upload className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              value={draft.coverImageUrl}
-              onChange={(e) => set('coverImageUrl', e.target.value)}
-              placeholder="https://… (paste an image URL)"
-              className="pl-9"
-            />
-          </div>
-          {draft.coverImageUrl && (
-            <Button variant="outline" size="sm" onClick={() => set('coverImageUrl', '')}>
-              <X className="w-4 h-4" />
-            </Button>
-          )}
-        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          aria-label="Upload event cover image"
+          title="Upload event cover image"
+          className="hidden"
+          onChange={handleFileChange}
+        />
 
-        {/* Preview */}
         {draft.coverImageUrl ? (
-          <div className="rounded-xl overflow-hidden mb-4 aspect-video bg-gray-100">
-            <img
-              src={draft.coverImageUrl}
-              alt="Cover preview"
-              className="w-full h-full object-cover"
-              onError={(e) => { (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&q=80'; }}
-            />
-          </div>
-        ) : (
-          <div className="rounded-xl border-2 border-dashed border-gray-300 aspect-video flex items-center justify-center mb-4 bg-gray-50">
-            <div className="text-center text-muted-foreground">
-              <ImageIcon className="w-10 h-10 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No image selected</p>
+          <div className="rounded-xl overflow-hidden aspect-video bg-gray-100 relative group mb-3">
+            <img src={draft.coverImageUrl} alt="Cover preview" className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+              <Button
+                type="button" size="sm" variant="secondary"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? 'Uploading…' : 'Change Image'}
+              </Button>
+              <Button type="button" size="sm" variant="destructive" onClick={() => set('coverImageUrl', '')}>
+                Remove
+              </Button>
             </div>
           </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="w-full rounded-xl border-2 border-dashed border-gray-300 aspect-video flex flex-col items-center justify-center mb-3 bg-gray-50 hover:border-[#004406]/50 hover:bg-[#004406]/5 transition-colors group"
+          >
+            <Upload className={`w-10 h-10 mb-2 transition-colors ${uploading ? 'text-gray-400 animate-pulse' : 'text-gray-400 group-hover:text-[#004406]'}`} />
+            <p className="text-sm font-medium text-muted-foreground group-hover:text-[#004406]">
+              {uploading ? 'Uploading…' : 'Click to upload an image'}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">PNG, JPG, WEBP up to 5MB</p>
+          </button>
         )}
 
-        {/* Suggestions */}
-        <p className="text-xs text-muted-foreground mb-2 font-medium">Quick picks:</p>
-        <div className="grid grid-cols-3 gap-2">
-          {UNSPLASH_SUGGESTIONS.map((url) => (
-            <button
-              key={url}
-              type="button"
-              onClick={() => set('coverImageUrl', url)}
-              className={`rounded-lg overflow-hidden aspect-video border-2 transition-all hover:opacity-90
-                ${draft.coverImageUrl === url ? 'border-[#004406]' : 'border-transparent'}`}
-            >
-              <img src={url} alt="suggestion" className="w-full h-full object-cover" />
-            </button>
-          ))}
-        </div>
+        {uploadError && <p className="text-sm text-destructive mt-1">{uploadError}</p>}
       </Card>
 
       {/* Good to Know */}
@@ -685,7 +781,7 @@ function Step3Details({ draft, set, tagInput, setTagInput }: {
               <div key={i} className="p-4 border rounded-xl space-y-3 bg-gray-50">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">FAQ {i + 1}</span>
-                  <button onClick={() => removeFaq(i)} className="text-muted-foreground hover:text-destructive transition-colors">
+                  <button type="button" aria-label="Remove FAQ" onClick={() => removeFaq(i)} className="text-muted-foreground hover:text-destructive transition-colors">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -774,6 +870,8 @@ function Step4Tickets({ draft, set }: { draft: EventDraft; set: <K extends keyof
                   </span>
                 </div>
                 <button
+                  type="button"
+                  aria-label="Remove ticket type"
                   onClick={() => removeTT(i)}
                   disabled={draft.ticketTypes.length === 1}
                   className="text-muted-foreground hover:text-destructive transition-colors disabled:opacity-30"

@@ -20,10 +20,26 @@ import ticketRoutes from "./routes/ticket.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 import supportRoutes from "./routes/support.routes.js";
+import blogRoutes from "./routes/blog.routes.js";
+import uploadRoutes from "./routes/upload.routes.js";
+import liveRoutes from "./routes/live.routes.js";
+import integrationRoutes from "./routes/integration.routes.js";
+import calendarRoutes from "./routes/calendar.routes.js";
+import kycRoutes from "./routes/kyc.routes.js";
+import promoCodeRoutes from "./routes/promoCode.routes.js";
+import seatRoutes from "./routes/seat.routes.js";
+import trackingLinkRoutes from "./routes/trackingLink.routes.js";
+import developerRoutes from "./routes/developer.routes.js";
+import aiRoutes from "./routes/ai.routes.js";
 
 // const { CLIENT_URL } = env;
 
 const app = express();
+
+// Trust the first proxy (Render's load balancer) so that
+// express-rate-limit reads the real client IP from X-Forwarded-For
+// instead of seeing all requests as the same internal IP.
+app.set('trust proxy', 1);
 
 // Security middleware
 app.use(helmet());
@@ -56,7 +72,10 @@ app.use(
 
       if (
         allowedOrigins.includes(normalizeOrigin(origin)) ||
-        /^https:\/\/eventhub-iota(-git-.*)?\.vercel\.app$/.test(
+        // Match any Vercel preview deployment for this project:
+        // eventhub-iota.vercel.app, eventhub-iota-git-*.vercel.app,
+        // eventhub-*.vercel.app (covers personal account previews like eventhub-gam51th7z-*.vercel.app)
+        /^https:\/\/eventhub(-[a-z0-9]+)*(-git-[^.]+)?(-[a-z0-9-]+)?\.vercel\.app$/.test(
           normalizeOrigin(origin),
         )
       ) {
@@ -79,6 +98,8 @@ const limiter = rateLimit({
   message: "Too many requests from this IP, please try again later.",
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip health check and root so Render's uptime pings never hit the limit
+  skip: (req) => req.path === '/api/health' || req.path === '/',
 });
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -91,6 +112,30 @@ app.use("/api/", limiter);
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
 app.use("/api/auth/forgot-password", authLimiter);
+app.use("/api/auth/google", authLimiter);
+app.use("/api/auth/2fa/challenge", authLimiter);
+
+const orderLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: "Too many order requests, please slow down.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: "Too many AI generation requests, please slow down.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: "Too many upload requests, please slow down.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Compression
 app.use(compression());
@@ -120,12 +165,23 @@ app.get("/", (req, res) => res.redirect("/api/health"));
 app.use("/api/auth", authRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/ticket-types", ticketTypeRoutes);
-app.use("/api/orders", orderRoutes);
+app.use("/api/orders", orderLimiter, orderRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/support", supportRoutes);
+app.use("/api/blog", blogRoutes);
+app.use("/api/upload", uploadLimiter, uploadRoutes);
+app.use("/api/live", liveRoutes);
+app.use("/api/integrations", integrationRoutes);
+app.use("/api/calendar", calendarRoutes);
+app.use("/api/kyc", kycRoutes);
+app.use("/api/promo-codes", promoCodeRoutes);
+app.use("/api/seats", seatRoutes);
+app.use("/api/tracking-links", trackingLinkRoutes);
+app.use("/api/developer", developerRoutes);
+app.use("/api/ai", aiLimiter, aiRoutes);
 
 // Error handling
 app.use(notFound);

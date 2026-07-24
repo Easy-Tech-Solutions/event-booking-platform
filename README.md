@@ -2,14 +2,14 @@
 
 A production-ready Eventbrite-like event management and ticketing web application built with the MERN stack.
 
-## Features
+## FeatureS
 
 - Event creation and management
 - Multi-tier ticketing system
 - Secure payment processing with Stripe
 - Role-based access control (attendee, organizer, admin)
 - QR code ticket generation
-- Real-time analytics dashboard
+- Real-time analytics dashboard or dashboards. 
 
 ## Tech Stack
 

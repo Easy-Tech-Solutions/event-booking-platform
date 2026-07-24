@@ -6,6 +6,7 @@ import {
   getMyTickets,
   getTicketById,
 } from "../controllers/ticket.controller.js";
+import { issueCompTicket, getVipAttendees } from "../controllers/vip.controller.js";
 
 const router = express.Router();
 
@@ -24,6 +25,10 @@ router.get(
   authorize("organizer", "admin"),
   getEventCheckIns,
 );
+
+// VIP / comp routes
+router.post("/comp", authenticate, authorize("organizer", "admin"), issueCompTicket);
+router.get("/vip/:eventId", authenticate, authorize("organizer", "admin"), getVipAttendees);
 
 router.get("/:id", authenticate, getTicketById);
 

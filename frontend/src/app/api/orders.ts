@@ -5,6 +5,13 @@ export interface OrderItem {
   quantity: number;
 }
 
+export interface OrderRecipient {
+  name: string;
+  email: string;
+  phone?: string;
+  ticketTypeName?: string;
+}
+
 export interface CreateOrderPayload {
   eventId: string;
   items: OrderItem[];
@@ -19,6 +26,13 @@ export interface CreateOrderPayload {
       country?: string;
     };
   };
+  promoCode?: string;
+  ref?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  paymentGateway?: 'stripe' | 'momo';
+  recipients?: OrderRecipient[];
 }
 
 export interface ConfirmOrderPayload {
@@ -26,9 +40,15 @@ export interface ConfirmOrderPayload {
   paymentMethodId: string;
 }
 
+export interface ConfirmMomoPayload {
+  orderId: string;
+  momoPhone: string;
+}
+
 export const ordersAPI = {
   createOrder: (data: CreateOrderPayload) => apiClient.post('/orders', data),
   confirmOrder: (data: ConfirmOrderPayload) => apiClient.post('/orders/confirm', data),
+  confirmMomoOrder: (data: ConfirmMomoPayload) => apiClient.post(`/orders/${data.orderId}/confirm-momo`, { momoPhone: data.momoPhone }),
   getMyOrders: (params?: { page?: number; limit?: number }) => apiClient.get('/orders', { params }),
   getOrderById: (id: string) => apiClient.get(`/orders/${id}`),
 };

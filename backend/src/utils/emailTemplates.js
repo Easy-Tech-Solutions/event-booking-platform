@@ -73,8 +73,39 @@ const orderConfirmationEmailTemplate = ({
   };
 };
 
+const ticketRecipientEmailTemplate = ({
+  recipientName,
+  senderName,
+  eventTitle,
+  eventDate,
+  eventLocation,
+  ticketNumber,
+  orderNumber,
+}) => {
+  const formattedDate = new Date(eventDate).toLocaleDateString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  });
+  return {
+    subject: `You've received a ticket — ${eventTitle}`,
+    html: `
+    <h2>Hi ${recipientName},</h2>
+    <p>${senderName} has sent you a ticket to <strong>${eventTitle}</strong>!</p>
+    <hr/>
+    <p><strong>Event:</strong> ${eventTitle}</p>
+    <p><strong>Date:</strong> ${formattedDate}</p>
+    <p><strong>Location:</strong> ${eventLocation?.venue || ''} ${eventLocation?.city || ''}</p>
+    <hr/>
+    <p><strong>Ticket Number:</strong> ${ticketNumber}</p>
+    <p>Please present your ticket number at the door for check-in.</p>
+    <p>You can view and manage your ticket in the Event Hub app under "My Tickets".</p>
+    <p>Thanks,<br/>The Event Hub Team</p>
+    `,
+  };
+};
+
 export {
   verificationEmailTemplate,
   resetPasswordEmailTemplate,
   orderConfirmationEmailTemplate,
+  ticketRecipientEmailTemplate,
 };

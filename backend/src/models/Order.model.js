@@ -53,6 +53,15 @@ const orderSchema = new mongoose.Schema({
   paymentMethod: String,
   refundStatus: { type: String, enum: ['none', 'pending', 'approved', 'rejected'], default: 'none' },
   refundReason: String,
+  // ── Promo code ────────────────────────────────────────────────────────────
+  promoCode: { type: mongoose.Schema.Types.ObjectId, ref: 'PromoCode', default: null },
+  promoCodeValue: { type: String, default: null }, // snapshot of the code string
+  discountAmount: { type: Number, default: 0 },
+  // ── UTM / tracking attribution ───────────────────────────────────────────
+  trackingLink: { type: mongoose.Schema.Types.ObjectId, ref: 'TrackingLink', default: null },
+  utmSource: { type: String, default: null },
+  utmMedium: { type: String, default: null },
+  utmCampaign: { type: String, default: null },
   billingDetails: {
     name: String,
     email: String,
@@ -64,16 +73,22 @@ const orderSchema = new mongoose.Schema({
       postal_code: String,
       country: String
     }
-  }
+  },
+  // Optional per-ticket recipients when buying on behalf of others
+  recipients: [{
+    name: { type: String, required: true },
+    email: { type: String, required: true },
+    phone: String,
+    ticketTypeName: String,
+  }],
+  paymentGateway: { type: String, enum: ['stripe', 'momo', 'comp'], default: 'stripe' },
 }, {
   timestamps: true
 });
 
-// orderSchema.pre('save', async function(next) {
-//   if (!this.orderNumber) {
-//     this.orderNumber = 'ORD-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
-//   }
-//   next();
-// });
+orderSchema.index({ user: 1 });
+orderSchema.index({ user: 1, event: 1 });
+orderSchema.index({ paymentIntentId: 1 });
+orderSchema.index({ status: 1, createdAt: -1 });
 
 export default mongoose.model('Order', orderSchema);
