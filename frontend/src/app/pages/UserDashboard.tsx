@@ -486,7 +486,7 @@ function ProfileSettings() {
 
   const handleEmailResend = async () => {
     setEmailLoading(true);
-    try { await apiClient.post('/auth/2fa/challenge/resend', { method: 'email_otp' }); setEmailMsg('Code resent.'); }
+    try { await apiClient.post('/auth/2fa/email/setup'); setEmailMsg('Code resent.'); }
     catch { setEmailMsg('Failed to resend.'); }
     finally { setEmailLoading(false); }
   };
@@ -532,7 +532,7 @@ function ProfileSettings() {
 
   const handleSmsResend = async () => {
     setSmsLoading(true);
-    try { await apiClient.post('/auth/2fa/challenge/resend', { method: 'sms_otp' }); setSmsMsg('Code resent.'); }
+    try { await apiClient.post('/auth/2fa/sms/setup', { phone: smsPhone }); setSmsMsg('Code resent.'); }
     catch { setSmsMsg('Failed to resend.'); }
     finally { setSmsLoading(false); }
   };

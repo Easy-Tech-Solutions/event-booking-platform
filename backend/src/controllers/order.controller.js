@@ -272,7 +272,10 @@ const confirmOrder = async (req, res, next) => {
     if (paymentIntent.status !== "succeeded") {
       return res.status(400).json({ message: `Payment not completed. Status: ${paymentIntent.status}` });
     }
-    if (paymentMethodId && paymentIntent.payment_method !== paymentMethodId) {
+    const retrievedPmId = typeof paymentIntent.payment_method === 'string'
+      ? paymentIntent.payment_method
+      : paymentIntent.payment_method?.id ?? null;
+    if (paymentMethodId && retrievedPmId && retrievedPmId !== paymentMethodId) {
       return res.status(400).json({ message: "Payment method mismatch." });
     }
 
@@ -309,7 +312,7 @@ const confirmOrder = async (req, res, next) => {
       stripePaymentIntentId: paymentIntent.id,
       amount: order.totalAmount,
       status: "succeeded",
-      paymentMethod: paymentIntent.payment_method,
+      paymentMethod: retrievedPmId,
     });
 
     const tickets = await fulfillOrder(order);

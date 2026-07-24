@@ -697,13 +697,19 @@ const verifyEmailOtp = async (req, res, next) => {
 // ─── POST /api/auth/2fa/email/disable ────────────────────────────────────────
 const disableEmailOtp = async (req, res, next) => {
   try {
-    const { password } = req.body;
-    const user = await User.findById(req.user._id).select('+password');
+    const { otp } = req.body;
+    const user = await User.findById(req.user._id).select('+emailOtp +emailOtpExpires');
     if (!user.emailOtpEnabled) return res.status(400).json({ message: 'Email 2FA is not enabled.' });
-    if (!password || !(await user.comparePassword(password))) {
-      return res.status(401).json({ message: 'Incorrect password.' });
+    if (!otp) return res.status(400).json({ message: 'otp is required.' });
+    if (!user.emailOtp || user.emailOtpExpires < new Date()) {
+      return res.status(400).json({ message: 'OTP expired or not found. Request a new one.' });
+    }
+    if (!verifyHashedOtp(otp, user.emailOtp)) {
+      return res.status(401).json({ message: 'Invalid OTP.' });
     }
     user.emailOtpEnabled = false;
+    user.emailOtp = undefined;
+    user.emailOtpExpires = undefined;
     await user.save();
     return res.json({ message: 'Email 2FA disabled.' });
   } catch (error) {
@@ -759,13 +765,19 @@ const verifySmsOtp = async (req, res, next) => {
 // ─── POST /api/auth/2fa/sms/disable ──────────────────────────────────────────
 const disableSmsOtp = async (req, res, next) => {
   try {
-    const { password } = req.body;
-    const user = await User.findById(req.user._id).select('+password');
+    const { otp } = req.body;
+    const user = await User.findById(req.user._id).select('+smsOtp +smsOtpExpires');
     if (!user.smsOtpEnabled) return res.status(400).json({ message: 'SMS 2FA is not enabled.' });
-    if (!password || !(await user.comparePassword(password))) {
-      return res.status(401).json({ message: 'Incorrect password.' });
+    if (!otp) return res.status(400).json({ message: 'otp is required.' });
+    if (!user.smsOtp || user.smsOtpExpires < new Date()) {
+      return res.status(400).json({ message: 'OTP expired or not found. Request a new one.' });
+    }
+    if (!verifyHashedOtp(otp, user.smsOtp)) {
+      return res.status(401).json({ message: 'Invalid OTP.' });
     }
     user.smsOtpEnabled = false;
+    user.smsOtp = undefined;
+    user.smsOtpExpires = undefined;
     await user.save();
     return res.json({ message: 'SMS 2FA disabled.' });
   } catch (error) {

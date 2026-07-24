@@ -41,10 +41,14 @@ const handleStripeWebhook = async (req, res) => {
 
 const handlePaymentSucceeded = async (paymentIntent) => {
   try {
+    const pmId = typeof paymentIntent.payment_method === 'string'
+      ? paymentIntent.payment_method
+      : paymentIntent.payment_method?.id ?? null;
+
     // C-2: Atomically claim the order — if confirmOrder already fulfilled it, this returns null and we skip.
     const order = await Order.findOneAndUpdate(
       { paymentIntentId: paymentIntent.id, status: "pending" },
-      { $set: { status: "completed", paymentMethod: paymentIntent.payment_method } },
+      { $set: { status: "completed", paymentMethod: pmId } },
       { new: false },
     )
       .populate("items.ticketType", "name price")
@@ -63,7 +67,7 @@ const handlePaymentSucceeded = async (paymentIntent) => {
       stripePaymentIntentId: paymentIntent.id,
       amount: order.totalAmount,
       status: "succeeded",
-      paymentMethod: paymentIntent.payment_method,
+      paymentMethod: pmId,
     });
 
     const tickets = await fulfillOrder(order);
