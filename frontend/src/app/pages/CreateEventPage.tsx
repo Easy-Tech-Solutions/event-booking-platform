@@ -313,33 +313,6 @@ function Step1Basics({ draft, set, categories, tagInput, setTagInput }: {
   tagInput: string;
   setTagInput: (v: string) => void;
 }) {
-  const [aiGenerating, setAiGenerating] = useState(false);
-  const [aiError, setAiError] = useState('');
-
-  const generateDescription = async () => {
-    setAiGenerating(true);
-    setAiError('');
-    try {
-      const res = await apiClient.post('/ai/generate', {
-        type: 'event_description',
-        context: {
-          title: draft.title,
-          category: draft.category,
-          format: draft.format,
-          city: draft.city,
-          startDate: draft.startDate,
-        },
-      });
-      if (res.data.generated) {
-        set('description', res.data.generated);
-      }
-    } catch {
-      setAiError('AI generation failed. Please try again or write your description manually.');
-    } finally {
-      setAiGenerating(false);
-    }
-  };
-
   const addTag = () => {
     const t = tagInput.trim().toLowerCase();
     if (t && !draft.tags.includes(t) && draft.tags.length < 10) {
@@ -621,6 +594,30 @@ function Step3Details({ draft, set, tagInput, setTagInput }: {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiError, setAiError] = useState('');
+
+  const generateDescription = async () => {
+    setAiGenerating(true);
+    setAiError('');
+    try {
+      const res = await apiClient.post('/ai/generate', {
+        type: 'event_description',
+        context: {
+          title: draft.title,
+          category: draft.category,
+          format: draft.format,
+          city: draft.city,
+          startDate: draft.startDate,
+        },
+      });
+      if (res.data.generated) set('description', res.data.generated);
+    } catch {
+      setAiError('AI generation failed. Please try again or write your description manually.');
+    } finally {
+      setAiGenerating(false);
+    }
+  };
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
