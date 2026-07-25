@@ -665,7 +665,16 @@ const setupEmailOtp = async (req, res, next) => {
     user.emailOtpExpires = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
-    await sendEmailOtp(user.email, otp, user.firstName);
+    try {
+      await sendEmailOtp(user.email, otp, user.firstName);
+    } catch (emailErr) {
+      // Roll back the stored OTP so the user can retry
+      user.emailOtp = undefined;
+      user.emailOtpExpires = undefined;
+      await user.save();
+      return res.status(503).json({ message: 'Failed to send verification email. Check that EMAIL_FROM is a verified SendGrid sender.' });
+    }
+
     return res.json({ message: `Verification code sent to ${user.email}.` });
   } catch (error) {
     next(error);
@@ -733,7 +742,15 @@ const setupSmsOtp = async (req, res, next) => {
     user.smsOtpExpires = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
-    await sendSmsOtp(targetPhone, otp);
+    try {
+      await sendSmsOtp(targetPhone, otp);
+    } catch (smsErr) {
+      user.smsOtp = undefined;
+      user.smsOtpExpires = undefined;
+      await user.save();
+      return res.status(503).json({ message: 'Failed to send SMS. Check that Twilio credentials are configured.' });
+    }
+
     return res.json({ message: `Verification code sent to ${targetPhone}.` });
   } catch (error) {
     next(error);

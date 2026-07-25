@@ -18,11 +18,8 @@ if (isProduction) {
   if (process.env.JWT_REFRESH_SECRET.length < 32) {
     throw new Error('[env] JWT_REFRESH_SECRET must be at least 32 characters in production');
   }
-  if (!process.env.SENDGRID_API_KEY) {
-    console.warn('[env] SENDGRID_API_KEY not set — email notifications will be disabled');
-  }
-  if (!process.env.EMAIL_FROM) {
-    console.warn('[env] EMAIL_FROM not set — email notifications will be disabled');
+  if (!process.env.GMAIL_APP_PASSWORD || !process.env.EMAIL_FROM) {
+    console.warn('[env] GMAIL_APP_PASSWORD or EMAIL_FROM not set — email notifications will be disabled');
   }
 }
 
@@ -39,8 +36,8 @@ export default {
   CLIENT_URL: process.env.CLIENT_URL || 'http://localhost:3000',
   CLIENT_URLS: process.env.CLIENT_URLS || '',
   BASE_URL: process.env.BASE_URL || 'http://localhost:5000',
-  SENDGRID_API_KEY: process.env.SENDGRID_API_KEY,
   EMAIL_FROM: process.env.EMAIL_FROM,
+  GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD,
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,

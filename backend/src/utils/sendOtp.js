@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import sgMail from '@sendgrid/mail';
+import transporter from '../config/email.js';
 import env from '../config/env.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -17,16 +17,14 @@ export const verifyHashedOtp = (plainOtp, hashedOtp) => {
 
 // ── Email OTP ─────────────────────────────────────────────────────────────────
 export const sendEmailOtp = async (toEmail, otp, firstName = '') => {
-  if (!env.SENDGRID_API_KEY) {
-    console.warn('SENDGRID_API_KEY not set — skipping email OTP send');
+  if (!env.GMAIL_APP_PASSWORD) {
+    console.warn('GMAIL_APP_PASSWORD not set — skipping email OTP send');
     return;
   }
 
-  sgMail.setApiKey(env.SENDGRID_API_KEY);
-
-  await sgMail.send({
+  await transporter.sendMail({
+    from: `EventHub <${env.EMAIL_FROM}>`,
     to: toEmail,
-    from: { email: env.EMAIL_FROM, name: 'EventHub' },
     subject: 'Your EventHub verification code',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
