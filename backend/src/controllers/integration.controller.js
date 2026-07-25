@@ -9,7 +9,9 @@ const ZOOM_API_BASE = 'https://api.zoom.us/v2';
 
 // GET /api/integrations/zoom/auth
 export const zoomAuthUrl = (req, res) => {
-  if (!env.ZOOM_CLIENT_ID) return res.status(503).json({ message: 'Zoom not configured.' });
+  if (!env.ZOOM_CLIENT_ID || !env.ZOOM_REDIRECT_URI) {
+    return res.status(503).json({ message: 'Zoom not configured. Set ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET and ZOOM_REDIRECT_URI on the server.' });
+  }
   const url = `https://zoom.us/oauth/authorize?response_type=code&client_id=${env.ZOOM_CLIENT_ID}&redirect_uri=${encodeURIComponent(env.ZOOM_REDIRECT_URI)}`;
   return res.json({ url });
 };
@@ -38,7 +40,7 @@ export const zoomCallback = async (req, res, next) => {
     await user.save();
 
     const clientUrl = env.CLIENT_URL;
-    return res.redirect(`${clientUrl}/dashboard?zoom=connected`);
+    return res.redirect(`${clientUrl}/user/profile?zoom=connected`);
   } catch (err) {
     next(err);
   }
@@ -98,7 +100,9 @@ const GOOGLE_SCOPES = [
 
 // GET /api/integrations/google/auth
 export const googleAuthUrl = (req, res) => {
-  if (!env.GOOGLE_CLIENT_ID) return res.status(503).json({ message: 'Google integration not configured.' });
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_REDIRECT_URI) {
+    return res.status(503).json({ message: 'Google integration not configured. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_REDIRECT_URI on the server.' });
+  }
   const oauth2Client = getGoogleOAuthClient();
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
@@ -127,7 +131,7 @@ export const googleCallback = async (req, res, next) => {
     await user.save();
 
     const clientUrl = env.CLIENT_URL;
-    return res.redirect(`${clientUrl}/dashboard?google=connected`);
+    return res.redirect(`${clientUrl}/user/profile?google=connected`);
   } catch (err) {
     next(err);
   }

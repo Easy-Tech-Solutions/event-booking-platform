@@ -351,6 +351,8 @@ function ProfileSettings() {
   // Connected accounts (Zoom / Google)
   const [integrations, setIntegrations] = useState<{ zoom: { connected: boolean }; google: { connected: boolean } }>({ zoom: { connected: false }, google: { connected: false } });
   const [intLoading, setIntLoading] = useState(true);
+  const [intError, setIntError] = useState('');
+  const [intSuccess, setIntSuccess] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -373,6 +375,11 @@ function ProfileSettings() {
       .then((r) => setIntegrations(r.data))
       .catch(() => {})
       .finally(() => setIntLoading(false));
+
+    // Show success banner after OAuth redirect
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('zoom') === 'connected') { setIntSuccess('Zoom connected successfully!'); window.history.replaceState({}, '', window.location.pathname); }
+    if (params.get('google') === 'connected') { setIntSuccess('Google connected successfully!'); window.history.replaceState({}, '', window.location.pathname); }
   }, [user]);
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -555,9 +562,10 @@ function ProfileSettings() {
 
   // ── Integrations ─────────────────────────────────────────────────────────
   const handleZoomConnect = () => {
+    setIntError('');
     apiClient.get('/integrations/zoom/auth')
       .then((r) => { if (r.data.url) window.location.href = r.data.url; })
-      .catch(() => {});
+      .catch((e) => setIntError(e.response?.data?.message || 'Zoom is not configured on this server.'));
   };
 
   const handleZoomDisconnect = async () => {
@@ -566,9 +574,10 @@ function ProfileSettings() {
   };
 
   const handleGoogleConnect = () => {
+    setIntError('');
     apiClient.get('/integrations/google/auth')
       .then((r) => { if (r.data.url) window.location.href = r.data.url; })
-      .catch(() => {});
+      .catch((e) => setIntError(e.response?.data?.message || 'Google integration is not configured on this server.'));
   };
 
   const handleGoogleDisconnect = async () => {
@@ -804,6 +813,13 @@ function ProfileSettings() {
           <h3 className="text-lg font-semibold">Connected Accounts</h3>
         </div>
         <p className="text-sm text-muted-foreground mb-5">Link external accounts to use Zoom/Google Meet for events and sync calendar bookings automatically.</p>
+
+        {intError && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{intError}</div>
+        )}
+        {intSuccess && (
+          <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">{intSuccess}</div>
+        )}
 
         <div className="space-y-3">
           {/* Zoom */}
