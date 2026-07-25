@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import transporter from '../config/email.js';
+import getTransporter from '../config/email.js';
 import env from '../config/env.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -17,12 +17,11 @@ export const verifyHashedOtp = (plainOtp, hashedOtp) => {
 
 // ── Email OTP ─────────────────────────────────────────────────────────────────
 export const sendEmailOtp = async (toEmail, otp, firstName = '') => {
-  if (!env.GMAIL_APP_PASSWORD) {
-    console.warn('GMAIL_APP_PASSWORD not set — skipping email OTP send');
-    return;
+  if (!env.GMAIL_APP_PASSWORD || !env.EMAIL_FROM) {
+    throw new Error('GMAIL_APP_PASSWORD or EMAIL_FROM is not set in environment variables.');
   }
 
-  await transporter.sendMail({
+  await getTransporter().sendMail({
     from: `EventHub <${env.EMAIL_FROM}>`,
     to: toEmail,
     subject: 'Your EventHub verification code',
