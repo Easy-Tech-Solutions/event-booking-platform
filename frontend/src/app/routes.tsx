@@ -45,10 +45,6 @@ export const router = createBrowserRouter([
     path: '/user/*',
     element: <ProtectedRoute><UserDashboard /></ProtectedRoute>,
   },
-  {
-    path: '/user',
-    element: <ProtectedRoute><UserDashboard /></ProtectedRoute>,
-  },
   // Standalone multi-step event creation wizard (has its own Navbar)
   // Must be declared before /organizer/* so it takes precedence over the wildcard
   {
@@ -57,10 +53,6 @@ export const router = createBrowserRouter([
   },
   {
     path: '/organizer/*',
-    element: <ProtectedRoute requiredRole="organizer"><OrganizerDashboard /></ProtectedRoute>,
-  },
-  {
-    path: '/organizer',
     element: <ProtectedRoute requiredRole="organizer"><OrganizerDashboard /></ProtectedRoute>,
   },
   // Admin and superadmin can access admin dashboard
