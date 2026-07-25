@@ -118,7 +118,7 @@ function MyTickets() {
 
   // Group tickets by orderId for quick lookup
   const ticketsByOrder = myTickets.reduce((acc: Record<string, any[]>, t: any) => {
-    const oid = t.order?._id ?? t.order;
+    const oid = (t.order?._id ?? t.order)?.toString();
     if (!oid) return acc;
     if (!acc[oid]) acc[oid] = [];
     acc[oid].push(t);
@@ -126,7 +126,7 @@ function MyTickets() {
   }, {});
 
   const renderOrderCard = (order: any, isUpcoming: boolean) => {
-    const orderTickets: any[] = ticketsByOrder[order._id] ?? [];
+    const orderTickets: any[] = ticketsByOrder[order._id?.toString()] ?? [];
     return (
       <Card key={order._id} className="p-6">
         <div className="flex flex-col md:flex-row gap-6">

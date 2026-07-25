@@ -126,9 +126,12 @@ const ordersSlice = createSlice({
       .addCase(fetchMyTickets.pending, (state) => { state.myTicketsLoading = true; })
       .addCase(fetchMyTickets.fulfilled, (state, action) => {
         state.myTicketsLoading = false;
-        state.myTickets = action.payload.tickets;
+        state.myTickets = action.payload.tickets ?? [];
       })
-      .addCase(fetchMyTickets.rejected, (state) => { state.myTicketsLoading = false; })
+      .addCase(fetchMyTickets.rejected, (state, action) => {
+        state.myTicketsLoading = false;
+        console.error('fetchMyTickets failed:', action.payload);
+      })
       .addCase(fetchOrderById.fulfilled, (state, action) => {
         state.currentOrder = action.payload.order;
         state.tickets = action.payload.tickets;
