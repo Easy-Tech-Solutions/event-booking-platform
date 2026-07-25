@@ -83,6 +83,7 @@ function MyTickets() {
   const [refundOrderId, setRefundOrderId] = useState<string | null>(null);
   const [refundReason, setRefundReason] = useState('');
   const [actionMsg, setActionMsg] = useState<Record<string, string>>({});
+  const [recoveringOrder, setRecoveringOrder] = useState<string | null>(null);
 
   useEffect(() => {
     dispatch(fetchMyOrders());
@@ -105,6 +106,18 @@ function MyTickets() {
       setActionMsg((p) => ({ ...p, [orderId]: e.response?.data?.message || 'Refund request failed. Please contact support.' }));
     }
     setRefundOrderId(null); setRefundReason('');
+  };
+
+  const handleRecover = async (orderId: string) => {
+    setRecoveringOrder(orderId);
+    try {
+      await apiClient.post(`/orders/${orderId}/recover-tickets`);
+      dispatch(fetchMyTickets());
+    } catch (e: any) {
+      setActionMsg((p) => ({ ...p, [orderId]: e.response?.data?.message || 'Could not recover tickets. Please contact support.' }));
+    } finally {
+      setRecoveringOrder(null);
+    }
   };
 
   if (isLoading) return <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-[#004406] border-t-transparent rounded-full animate-spin" /></div>;
@@ -174,7 +187,17 @@ function MyTickets() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground text-center py-2">No tickets found for this order.</p>
+                  <div className="text-center py-2">
+                    <p className="text-sm text-muted-foreground mb-2">No tickets found for this order.</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={recoveringOrder === order._id}
+                      onClick={() => handleRecover(order._id)}
+                    >
+                      {recoveringOrder === order._id ? 'Recovering…' : 'Reload Tickets'}
+                    </Button>
+                  </div>
                 )}
               </div>
             )}

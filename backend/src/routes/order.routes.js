@@ -8,6 +8,7 @@ import {
   getOrderById,
   cancelOrder,
   requestRefund,
+  recoverOrderTickets,
 } from "../controllers/order.controller.js";
 import {
   orderValidation,
@@ -24,5 +25,6 @@ router.get("/:id", authenticate, mongoIdValidation, getOrderById);
 router.post("/:id/confirm-momo", authenticate, mongoIdValidation, confirmMomoOrder);
 router.patch("/:id/cancel", authenticate, mongoIdValidation, cancelOrder);
 router.post("/:id/refund", authenticate, mongoIdValidation, requestRefund);
+router.post("/:id/recover-tickets", authenticate, mongoIdValidation, recoverOrderTickets);
 
 export default router;

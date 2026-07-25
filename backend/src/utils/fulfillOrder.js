@@ -31,11 +31,16 @@ export const fulfillOrder = async (order, { eventDoc, userDoc } = {}) => {
   let grossRevenue = 0;
 
   for (const item of order.items) {
-    totalTicketsSold += item.quantity;
-    grossRevenue += (item.price || 0) * item.quantity;
     const ticketTypeId = item.ticketType?._id ?? item.ticketType;
+    if (!ticketTypeId) {
+      logger.error(`fulfillOrder: order ${order._id} item missing ticketType — skipping`);
+      continue;
+    }
+    const qty = Number(item.quantity) || 0;
+    totalTicketsSold += qty;
+    grossRevenue += (item.price || 0) * qty;
 
-    for (let i = 0; i < item.quantity; i++) {
+    for (let i = 0; i < qty; i++) {
       const ticket = new Ticket({
         order: order._id,
         event: eventId,
@@ -43,8 +48,12 @@ export const fulfillOrder = async (order, { eventDoc, userDoc } = {}) => {
         holder: userId,
       });
       await ticket.save();
-      ticket.qrCode = await generateQRCode(generateTicketQRData(ticket));
-      await ticket.save();
+      try {
+        ticket.qrCode = await generateQRCode(generateTicketQRData(ticket));
+        await ticket.save();
+      } catch (qrErr) {
+        logger.error(`fulfillOrder: QR generation failed for ticket ${ticket._id} — continuing without QR`, qrErr.message);
+      }
       tickets.push(ticket);
     }
   }

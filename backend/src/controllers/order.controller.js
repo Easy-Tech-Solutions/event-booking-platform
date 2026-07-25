@@ -513,4 +513,32 @@ const requestRefund = async (req, res, next) => {
   }
 };
 
-export { createOrder, confirmOrder, confirmMomoOrder, getMyOrders, getOrderById, cancelOrder, requestRefund };
+const recoverOrderTickets = async (req, res, next) => {
+  try {
+    const order = await Order.findById(req.params.id)
+      .populate("items.ticketType")
+      .populate("event", "title startDate location")
+      .populate("user", "firstName lastName email");
+
+    if (!order) return res.status(404).json({ message: "Order not found" });
+    if (order.user._id.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+    if (order.status !== "completed") {
+      return res.status(400).json({ message: "Order is not completed — tickets can only be recovered for completed orders." });
+    }
+
+    const existingTickets = await Ticket.find({ order: order._id });
+    if (existingTickets.length > 0) {
+      return res.json({ message: "Tickets already exist", tickets: existingTickets });
+    }
+
+    const tickets = await fulfillOrder(order);
+    logger.info(`recoverOrderTickets: recovered ${tickets.length} ticket(s) for order ${order._id}`);
+    res.json({ message: "Tickets recovered successfully", tickets });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export { createOrder, confirmOrder, confirmMomoOrder, getMyOrders, getOrderById, cancelOrder, requestRefund, recoverOrderTickets };
