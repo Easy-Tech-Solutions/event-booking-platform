@@ -27,7 +27,9 @@ services:
         sync: false
       - key: CLIENT_URLS
         sync: false
-      - key: SENDGRID_API_KEY
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: ADMIN_SETUP_TOKEN
         sync: false
       - key: EMAIL_FROM
         sync: false

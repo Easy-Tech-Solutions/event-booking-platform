@@ -75,7 +75,7 @@ app.use(
         // Match any Vercel preview deployment for this project:
         // eventhub-iota.vercel.app, eventhub-iota-git-*.vercel.app,
         // eventhub-*.vercel.app (covers personal account previews like eventhub-gam51th7z-*.vercel.app)
-        /^https:\/\/eventhub(-[a-z0-9]+)*(-git-[^.]+)?(-[a-z0-9-]+)?\.vercel\.app$/.test(
+        /^https:\/\/eventhub-iota(-[a-z0-9-]+)?\.vercel\.app$/.test(
           normalizeOrigin(origin),
         )
       ) {
@@ -136,6 +136,13 @@ const uploadLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+const supportLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: "Too many support requests, please try again later.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Compression
 app.use(compression());
@@ -170,7 +177,7 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/notifications", notificationRoutes);
-app.use("/api/support", supportRoutes);
+app.use("/api/support", supportLimiter, supportRoutes);
 app.use("/api/blog", blogRoutes);
 app.use("/api/upload", uploadLimiter, uploadRoutes);
 app.use("/api/live", liveRoutes);

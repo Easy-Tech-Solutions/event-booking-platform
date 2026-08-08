@@ -74,5 +74,8 @@ eventSchema.index({ title: 'text', description: 'text', tags: 'text' });
 eventSchema.index({ startDate: 1 });
 eventSchema.index({ category: 1 });
 eventSchema.index({ organizer: 1 });
+eventSchema.index({ status: 1, startDate: 1 });
+eventSchema.index({ status: 1, category: 1 });
+eventSchema.index({ status: 1, organizer: 1 });
 
 export default mongoose.model('Event', eventSchema);

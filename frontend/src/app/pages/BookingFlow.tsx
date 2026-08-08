@@ -128,9 +128,11 @@ function PaymentForm({ total, billingName, billingEmail, clientSecret, currentOr
             }}
           />
         </div>
-        <p className="text-xs text-muted-foreground mt-1.5">
-          Test: 4242 4242 4242 4242 · any future date · any 3-digit CVC
-        </p>
+        {import.meta.env.DEV && (
+          <p className="text-xs text-muted-foreground mt-1.5">
+            Test: 4242 4242 4242 4242 · any future date · any 3-digit CVC
+          </p>
+        )}
       </div>
 
       <div className="bg-[#004406]/10 border border-[#004406]/20 rounded-lg p-4 flex items-start gap-3">
@@ -389,6 +391,11 @@ export function BookingFlow() {
               <Card className="p-6">
                 <h2 className="text-2xl font-bold mb-6">Select Your Tickets</h2>
                 <div className="space-y-4">
+                  {ticketTypes.length === 0 && (
+                    <p className="text-muted-foreground text-sm text-center py-6">
+                      No ticket types are available for this event yet.
+                    </p>
+                  )}
                   {ticketTypes.map((ticket: any) => (
                     <div key={ticket._id} className="flex items-center justify-between border rounded-lg p-4">
                       <div>
@@ -542,29 +549,9 @@ export function BookingFlow() {
 
                   <Separator />
 
-                  {/* Payment method selector */}
-                  <div className="space-y-3">
-                    <Label className="font-semibold">Payment Method</Label>
-                    <div className="grid grid-cols-2 gap-3">
-                      {([
-                        { key: 'card', icon: CreditCard, label: 'Credit / Debit Card' },
-                        { key: 'momo', icon: Smartphone, label: 'MTN Mobile Money' },
-                      ] as const).map(({ key, icon: Icon, label }) => (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => setPaymentMethod(key)}
-                          className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 text-sm font-medium transition-colors ${
-                            paymentMethod === key
-                              ? 'border-[#004406] bg-[#004406]/5 text-[#004406]'
-                              : 'border-border text-muted-foreground hover:border-[#004406]/40'
-                          }`}
-                        >
-                          <Icon className="w-5 h-5" />
-                          {label}
-                        </button>
-                      ))}
-                    </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <CreditCard className="w-4 h-4" />
+                    <span>Payment via Credit / Debit Card</span>
                   </div>
 
                   {orderError && <p className="text-sm text-destructive">{orderError}</p>}

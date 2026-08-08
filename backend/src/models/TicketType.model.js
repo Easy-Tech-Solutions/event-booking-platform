@@ -72,6 +72,9 @@ const ticketTypeSchema = new mongoose.Schema({
   toObject: { virtuals: true },
 });
 
+ticketTypeSchema.index({ event: 1, isActive: 1 });
+ticketTypeSchema.index({ event: 1, saleEndDate: 1 });
+
 ticketTypeSchema.virtual('available').get(function() {
   return this.quantity - this.sold;
 });

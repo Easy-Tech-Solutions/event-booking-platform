@@ -1,6 +1,7 @@
 import axios from 'axios';
 import Event from '../models/Event.model.js';
 import LiveSession from '../models/LiveSession.model.js';
+import Ticket from '../models/Ticket.model.js';
 import env from '../config/env.js';
 
 // ─── Daily.co helpers ─────────────────────────────────────────────────────────
@@ -163,6 +164,17 @@ export const joinLiveSession = async (req, res, next) => {
 
     // Organizer gets host URL; attendees get participant URL
     const isOrganizer = session.event.organizer.toString() === req.user._id.toString();
+
+    if (!isOrganizer) {
+      const hasTicket = await Ticket.exists({
+        event: session.event._id,
+        holder: req.user._id,
+        status: 'active',
+      });
+      if (!hasTicket) {
+        return res.status(403).json({ message: 'A valid ticket is required to join this event.' });
+      }
+    }
 
     if (session.provider === 'custom') {
       return res.json({

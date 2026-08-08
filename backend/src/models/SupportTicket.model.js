@@ -31,6 +31,10 @@ const supportTicketSchema = new mongoose.Schema({
   ticketNumber: { type: String, unique: true },
 }, { timestamps: true });
 
+supportTicketSchema.index({ status: 1, createdAt: -1 });
+supportTicketSchema.index({ priority: 1, status: 1 });
+supportTicketSchema.index({ user: 1 });
+
 supportTicketSchema.pre('save', function (next) {
   if (!this.ticketNumber) {
     this.ticketNumber = 'SUP-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5).toUpperCase();

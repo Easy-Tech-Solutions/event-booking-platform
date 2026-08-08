@@ -96,9 +96,21 @@ const updateTicketType = async (req, res, next) => {
       return res.status(403).json({ message: "Not authorized." });
     }
 
+    const {
+      name, description, price, quantity, maxPerOrder,
+      saleStartDate, saleEndDate, isActive, benefits,
+      ticketCategory, isDonation, minDonation, isHidden,
+      timedEntrySlot, organizerAbsorbsFee, isVip, isComp,
+    } = req.body;
+
     const updated = await TicketType.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      {
+        name, description, price, quantity, maxPerOrder,
+        saleStartDate, saleEndDate, isActive, benefits,
+        ticketCategory, isDonation, minDonation, isHidden,
+        timedEntrySlot, organizerAbsorbsFee, isVip, isComp,
+      },
       { new: true, runValidators: true },
     );
 

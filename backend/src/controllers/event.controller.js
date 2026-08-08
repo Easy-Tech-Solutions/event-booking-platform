@@ -16,6 +16,10 @@ const createEvent = async (req, res, next) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
+    if (req.user.role === 'organizer' && req.user.organizerStatus !== 'approved') {
+      return res.status(403).json({ message: 'Your organizer account must be approved before you can create events. Please complete the KYC process.' });
+    }
+
     let imagePath = null;
     if (req.file) {
       const uploaded = await uploadEventImage(req.file.buffer, req.file.mimetype);

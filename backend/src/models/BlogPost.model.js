@@ -24,6 +24,9 @@ const blogPostSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+blogPostSchema.index({ status: 1, publishedAt: -1 });
+blogPostSchema.index({ author: 1 });
+
 // Auto-generate slug from title if not provided
 blogPostSchema.pre('validate', function (next) {
   if (!this.slug && this.title) {
